@@ -365,8 +365,8 @@
   <header>
     <div class="header-title" id="header-store-name">店舗POSレジ</div>
     <div class="header-controls" id="staff-header-controls">
-      <button onclick="openOrderLookupModal()">予約番号呼出</button>
-      <button onclick="showCustomerQrModal()">予約用QR表示</button>
+      <button onclick="openOrderLookupModal()">モバイル注文番号呼出</button>
+      <button onclick="showCustomerQrModal()">モバイル注文用QR表示</button>
       <button id="sound-toggle-btn" onclick="toggleSound()">効果音: ON</button>
       <button onclick="enableSelfCheckout()">セルフレジ切替</button>
       <button class="primary" onclick="openAdminModal()">裏メニュー(設定)</button>
@@ -374,7 +374,7 @@
     </div>
     <!-- セルフレジ時のヘッダーボタン -->
     <div class="header-controls hidden" id="self-header-controls">
-      <button onclick="openOrderLookupModal()">予約番号入力</button>
+      <button onclick="openOrderLookupModal()">モバイル注文番号入力</button>
       <button class="danger solid" style="font-size: 18px; padding: 10px 20px;" onclick="triggerStaffCall()">店員呼び出し</button>
     </div>
   </header>
@@ -1409,7 +1409,7 @@ const firebaseConfig = {
       createdAt: new Date().toISOString()
     });
 
-    alert(`【予約完了】\n\nあなたの予約番号は\n\n「 ${orderCode} 」\n\nです。レジにてこの番号をお伝えください！`);
+    alert(`【注文完了】\n\nあなたの注文番号は\n\n「 ${orderCode} 」\n\nです。レジにてこの番号をお伝えください！`);
     clearCustCart();
   };
 
@@ -1425,7 +1425,7 @@ const firebaseConfig = {
       const q = query(collection(db, "stores", storeId, "orders"), where("status", "==", "pending"));
       const snap = await getDocs(q);
       if (!snap.empty) {
-        listDiv.innerHTML = "<p style='font-weight:bold; margin-bottom:6px;'>未会計の予約一覧（タップで読込）:</p>";
+        listDiv.innerHTML = "<p style='font-weight:bold; margin-bottom:6px;'>未会計の注文一覧（タップで読込）:</p>";
         snap.forEach(d => {
           const data = d.data();
           const btn = document.createElement("button");
@@ -1447,7 +1447,7 @@ const firebaseConfig = {
       where("status", "==", "pending")
     );
     const snap = await getDocs(q);
-    if (snap.empty) return alert("該当する未会計の予約番号が見つかりません");
+    if (snap.empty) return alert("該当する未会計の注文番号が見つかりません");
     const docSnap = snap.docs[0];
     loadOrderIntoCart(docSnap.id, docSnap.data());
   };
@@ -1464,7 +1464,7 @@ const firebaseConfig = {
     globalDiscount = null;
     renderCart();
     closeModal("order-lookup-modal");
-    alert(`予約番号「${orderData.orderCode}」の商品をカートに読み込みました。商品の追加や削除も可能です。`);
+    alert(`注文番号「${orderData.orderCode}」の商品をカートに読み込みました。商品の追加や削除も可能です。`);
   }
 
   // =========================================================================
