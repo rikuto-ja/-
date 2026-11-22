@@ -412,8 +412,8 @@
 <!-- ==================== 3. 外部端末用：QR商品予約画面 ==================== -->
 <div id="customer-order-screen" class="hidden">
   <header>
-    <div class="header-title" id="cust-store-name">モバイル事前注文</div>
-    <div style="font-size: 14px;">商品を選んで予約番号を発行してください</div>
+    <div class="header-title" id="cust-store-name">モバイル注文</div>
+    <div style="font-size: 14px;">商品を選んで番号を発行してください</div>
   </header>
   <div id="main-pos">
     <div class="product-area">
@@ -422,14 +422,14 @@
     </div>
     <div class="cart-area">
       <div class="cart-header">
-        <span style="font-weight: bold;">予約リスト</span>
+        <span style="font-weight: bold;">リスト</span>
         <button class="danger" style="padding: 4px 10px; font-size: 14px;" onclick="clearCustCart()">クリア</button>
       </div>
       <div class="cart-list" id="cust-cart-list"></div>
       <div class="totals-box">
-        <div class="total-row grand-total"><span>予定合計</span><span id="cust-total-amount">¥0</span></div>
+        <div class="total-row grand-total"><span>合計</span><span id="cust-total-amount">¥0</span></div>
       </div>
-      <button class="primary" style="width: 100%; padding: 16px; font-size: 18px;" onclick="submitCustomerOrder()">予約を確定して番号を発行</button>
+      <button class="primary" style="width: 100%; padding: 16px; font-size: 18px;" onclick="submitCustomerOrder()">商品を確定して番号を発行</button>
     </div>
   </div>
 </div>
@@ -522,10 +522,10 @@
 <div id="order-lookup-modal" class="modal-overlay hidden">
   <div class="modal-content">
     <div class="modal-header">
-      <h2>予約番号呼び出し</h2>
+      <h2>モバイル注文番号</h2>
       <button onclick="closeModal('order-lookup-modal')">閉じる</button>
     </div>
-    <p style="margin-bottom: 10px;">予約完了時に表示された4桁の番号を入力してください。</p>
+    <p style="margin-bottom: 10px;">注文完了時に表示された4桁の番号を入力してください。</p>
     <input type="text" id="lookup-order-code" placeholder="例: 1234" style="font-size: 24px; text-align: center; margin-bottom: 12px;">
     <button class="primary" style="width: 100%; padding: 14px;" onclick="fetchOrderByCode()">注文内容をレジに読み込む</button>
     <div id="recent-orders-list" style="margin-top: 16px;"></div>
@@ -536,10 +536,10 @@
 <div id="qr-modal" class="modal-overlay hidden">
   <div class="modal-content" style="text-align: center;">
     <div class="modal-header">
-      <h2>お客様予約用QRコード</h2>
+      <h2>お客様注文用QRコード</h2>
       <button onclick="closeModal('qr-modal')">閉じる</button>
     </div>
-    <p style="margin-bottom: 12px;">別のスマホやタブレットでこのQRコードを読み取ると、商品を選んで予約番号を発行できます。</p>
+    <p style="margin-bottom: 12px;">別のスマホやタブレットでこのQRコードを読み取ると、商品を選んで注文番号を発行できます。</p>
     <div id="qrcode-container" style="display: flex; justify-content: center; margin: 20px 0;"></div>
     <p id="qr-url-text" style="font-size: 12px; word-break: break-all; color: var(--dark-gray);"></p>
   </div>
