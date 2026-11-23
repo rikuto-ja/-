@@ -496,11 +496,11 @@
     <!-- 右：カート・会計 -->
     <div class="cart-area">
       <div class="cart-header">
-        <span style="font-weight: bold;">リスト</span>
-        <div style="display: flex; gap: 4px;">
-          <button style="padding: 4px 8px; font-size: 12px;" onclick="moveCustCart('up')">上へ</button>
-          <button style="padding: 4px 8px; font-size: 12px;" onclick="moveCustCart('down')">下へ</button>
-          <button class="danger" style="padding: 4px 10px; font-size: 14px;" onclick="clearCustCart()">クリア</button>
+        <span style="font-weight: bold;">お買上げ明細</span>
+        <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+          <button type="button" style="padding: 4px 8px; font-size: 12px;" onclick="createMobileOrderFromPos()">番号発行・印刷</button>
+          <button type="button" style="padding: 4px 8px; font-size: 12px;" onclick="saveLoadedMobileOrders()">番号編集保存</button>
+          <button type="button" class="danger" style="padding: 4px 10px; font-size: 14px;" onclick="clearCart()">リセット</button>
         </div>
       </div>
       <div class="cart-list" id="cart-list"></div>
@@ -532,13 +532,14 @@
     </div>
     <div class="cart-area">
       <div class="cart-header">
-        <span style="font-weight: bold;">リスト</span>
-        <div style="display: flex; gap: 4px;">
-          <button style="padding: 4px 8px; font-size: 12px;" onclick="moveCustCart('up')">上へ</button>
-          <button style="padding: 4px 8px; font-size: 12px;" onclick="moveCustCart('down')">下へ</button>
-          <button class="danger" style="padding: 4px 10px; font-size: 14px;" onclick="clearCustCart()">クリア</button>
-        </div>
-      </div>
+  <span style="font-weight: bold;">リスト</span>
+  <div style="display: flex; gap: 6px; align-items: center;">
+    <span id="drag-scroll-handle" style="border: 2px solid var(--border); padding: 4px 10px; font-size: 12px; font-weight: bold; border-radius: 4px; cursor: grab; touch-action: none; background: var(--gray);">
+      押しながらスクロール
+    </span>
+    <button type="button" class="danger" style="padding: 4px 10px; font-size: 14px;" onclick="clearCustCart()">クリア</button>
+  </div>
+</div>
       <div class="cart-list" id="cust-cart-list"></div>
       <div class="totals-box">
         <div class="total-row grand-total"><span>合計</span><span id="cust-total-amount">¥0</span></div>
@@ -551,11 +552,19 @@
   <p style="font-size: 14px; color: var(--dark-gray);">レジにて以下の番号をお伝えください</p>
   <div id="completed-order-code-display" style="font-size: 56px; font-weight: bold; border: 3px solid var(--border); padding: 16px 36px; border-radius: 8px; margin: 20px 0;">----</div>
   <div id="completed-order-items-preview" style="max-width: 400px; width: 100%; text-align: left; border-top: 1px solid #ccc; border-bottom: 1px solid #ccc; padding: 10px 0; margin-bottom: 24px; font-size: 14px;"></div>
+  </div>
   <div style="display: flex; gap: 12px; width: 100%; max-width: 400px;">
     <button style="flex: 1; padding: 14px;" onclick="editSubmittedCustomerOrder()">編集する</button>
     <button class="danger" style="flex: 1; padding: 14px;" onclick="deleteSubmittedCustomerOrder()">削除する</button>
   </div>
   <button class="primary" style="width: 100%; max-width: 400px; padding: 14px; margin-top: 12px;" onclick="startNewCustomerOrder()">新しい注文を始める</button>
+</div>
+
+<div id="customer-order-deleted-view" class="hidden" style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 24px; text-align: center;">
+  <h2 style="font-size: 26px; margin-bottom: 12px; color: var(--red);">削除されました</h2>
+  <p style="font-size: 15px; color: var(--dark-gray); margin-bottom: 24px;">このご注文はキャンセル（削除）されました。</p>
+  <button class="primary" style="padding: 14px 28px; font-size: 16px;" onclick="startNewCustomerOrder()">新しい注文を始める</button>
+</div>
 </div>
 </div>
 
@@ -695,7 +704,7 @@
       <button onclick="closeModal('order-lookup-modal')">閉じる</button>
     </div>
     <p style="margin-bottom: 10px;">注文完了時に表示された4桁の番号を入力してください。</p>
-    <input type="text" id="lookup-order-code" placeholder="例: 1234" style="font-size: 24px; text-align: center; margin-bottom: 12px;">
+    <input type="text" id="lookup-order-code" readonly onclick="openNumpadForInput('lookup-order-code', '注文番号入力')" placeholder="タップしてテンキー入力" style="font-size: 24px; text-align: center; margin-bottom: 12px; background: var(--gray);">
     <button class="primary" style="width: 100%; padding: 14px;" onclick="fetchOrderByCode()">注文内容をレジに読み込む</button>
     <div id="recent-orders-list" style="margin-top: 16px;"></div>
   </div>
@@ -1120,13 +1129,12 @@ const firebaseConfig = {
   }
 
   window.clearCart = () => {
+    console.log("[clearCart] before:", { cart, globalDiscount, loadedOrderDocIds });
     cart = [];
-    loadedOrderDocIds = [];
     globalDiscount = null;
-    currentOrderDocId = null;
-    const addrEl = document.getElementById("receipt-addressee");
-    if (addrEl) addrEl.value = "";
+    loadedOrderDocIds = [];
     renderCart();
+    console.log("[clearCart] after:", { cart });
   };
 
   // 金額計算（商品別割引・自動割引・全体割引すべて反映）
@@ -1599,12 +1607,11 @@ const firebaseConfig = {
     if (custCart[idx].qty <= 0) custCart.splice(idx, 1);
     renderCustCart();
   };
-  window.clearCustCart = () => { custCart = []; renderCustCart(); };
-
-  let submittedOrderDocId = null;
-  let submittedOrderCode = null;
-  let submittedOrderItems = [];
-  let unsubscribeOrderStatus = null;
+  window.clearCustCart = () => {
+    console.log("[clearCustCart] before:", custCart);
+    custCart = [];
+    renderCustCart();
+  };
 
   window.moveCustCart = (dir) => {
     const mainPos = document.querySelector("#customer-order-screen #main-pos");
@@ -1649,12 +1656,20 @@ const firebaseConfig = {
     if (!submittedOrderDocId) return;
 
     unsubscribeOrderStatus = onSnapshot(doc(db, "stores", storeId, "orders", submittedOrderDocId), (snap) => {
-      if (!snap.exists()) return;
+      console.log("[watchSubmittedOrderStatus] exists:", snap.exists(), "data:", snap.data());
+      if (!snap.exists()) {
+        // POS側または客側で削除された場合
+        document.getElementById("customer-order-complete-view").classList.add("hidden");
+        document.querySelector("#customer-order-screen #main-pos").classList.add("hidden");
+        document.getElementById("customer-checkout-done-view").classList.add("hidden");
+        document.getElementById("customer-order-deleted-view").classList.remove("hidden");
+        return;
+      }
       const data = snap.data();
-      console.log("[watchSubmittedOrderStatus] status:", data.status);
       if (data.status === "completed") {
         document.getElementById("customer-order-complete-view").classList.add("hidden");
         document.querySelector("#customer-order-screen #main-pos").classList.add("hidden");
+        document.getElementById("customer-order-deleted-view").classList.add("hidden");
         document.getElementById("customer-checkout-done-view").classList.remove("hidden");
       }
     });
@@ -1710,31 +1725,6 @@ const firebaseConfig = {
     document.getElementById("customer-order-complete-view").classList.add("hidden");
     document.getElementById("customer-checkout-done-view").classList.add("hidden");
     document.querySelector("#customer-order-screen #main-pos").classList.remove("hidden");
-  };
-
-  // レジ側：予約番号呼び出しモーダル
-  window.openOrderLookupModal = async () => {
-    document.getElementById("lookup-order-code").value = "";
-    document.getElementById("order-lookup-modal").classList.remove("hidden");
-
-    // 未会計の予約一覧も参考表示（店員モード時のみ）
-    const listDiv = document.getElementById("recent-orders-list");
-    listDiv.innerHTML = "";
-    if (!isSelfCheckout) {
-      const q = query(collection(db, "stores", storeId, "orders"), where("status", "==", "pending"));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        listDiv.innerHTML = "<p style='font-weight:bold; margin-bottom:6px;'>未会計の注文一覧（タップで読込）:</p>";
-        snap.forEach(d => {
-          const data = d.data();
-          const btn = document.createElement("button");
-          btn.style.margin = "4px";
-          btn.textContent = `番号: ${data.orderCode} (${data.items.length}点)`;
-          btn.onclick = () => loadOrderIntoCart(d.id, data);
-          listDiv.appendChild(btn);
-        });
-      }
-    }
   };
 
   // =========================================================================
@@ -2401,6 +2391,97 @@ const firebaseConfig = {
 
     renderCart();
     closeModal("order-lookup-modal");
+  }
+
+  (() => {
+    let isDraggingScroll = false;
+    let startY = 0;
+    let startX = 0;
+    let startScrollTop = 0;
+    let startScrollLeft = 0;
+
+    document.addEventListener("pointerdown", (e) => {
+      const handle = e.target.closest("#drag-scroll-handle");
+      if (!handle) return;
+      const scrollTarget = document.getElementById("cust-cart-list") || document.querySelector("#customer-order-screen #main-pos");
+      if (!scrollTarget) return;
+      isDraggingScroll = true;
+      handle.setPointerCapture(e.pointerId);
+      startY = e.clientY;
+      startX = e.clientX;
+      startScrollTop = scrollTarget.scrollTop;
+      startScrollLeft = scrollTarget.scrollLeft;
+    });
+
+    document.addEventListener("pointermove", (e) => {
+      if (!isDraggingScroll) return;
+      const scrollTarget = document.getElementById("cust-cart-list") || document.querySelector("#customer-order-screen #main-pos");
+      if (!scrollTarget) return;
+      const dy = e.clientY - startY;
+      const dx = e.clientX - startX;
+      scrollTarget.scrollTop = startScrollTop - dy;
+      scrollTarget.scrollLeft = startScrollLeft - dx;
+    });
+
+    document.addEventListener("pointerup", () => {
+      isDraggingScroll = false;
+    });
+  })();
+
+  window.createMobileOrderFromPos = async () => {
+    console.log("[createMobileOrderFromPos] cart:", cart);
+    if (cart.length === 0) return alert("先に商品をカートに入れてください");
+    const orderCode = String(Math.floor(1000 + Math.random() * 9000));
+    const itemsCopy = cart.map(i => ({
+      productId: i.productId,
+      name: i.name,
+      price: i.price,
+      qty: i.qty
+    }));
+    const docRef = await addDoc(collection(db, "stores", storeId, "orders"), {
+      orderCode,
+      items: itemsCopy,
+      status: "pending",
+      createdAt: new Date().toISOString()
+    });
+    loadedOrderDocIds.push(docRef.id);
+    printMobileOrderSlip(orderCode, itemsCopy);
+    alert(`新規モバイル注文番号「${orderCode}」を発行しました。`);
+  };
+
+  // 読み込み済みのモバイル注文の最新カート内容でFirestoreを更新保存
+  window.saveLoadedMobileOrders = async () => {
+    console.log("[saveLoadedMobileOrders] loadedOrderDocIds:", loadedOrderDocIds, "cart:", cart);
+    if (loadedOrderDocIds.length === 0) return alert("編集対象のモバイル注文が読み込まれていません");
+    const itemsCopy = cart.map(i => ({
+      productId: i.productId,
+      name: i.name,
+      price: i.price,
+      qty: i.qty
+    }));
+    for (const docId of loadedOrderDocIds) {
+      await updateDoc(doc(db, "stores", storeId, "orders", docId), {
+        items: itemsCopy,
+        updatedAt: new Date().toISOString()
+      });
+    }
+    alert("モバイル注文の編集内容を保存しました。");
+  };
+
+  function printMobileOrderSlip(orderCode, items) {
+    const area = document.getElementById("print-area");
+    const rowsHtml = items.map(i =>
+      `<div class="receipt-row"><span>${escapeHtml(i.name)} ×${i.qty}</span><span>¥${(i.price * i.qty).toLocaleString()}</span></div>`
+    ).join("");
+    area.innerHTML = `
+      <div class="receipt-center receipt-bold" style="font-size:16px;">モバイル注文番号票</div>
+      <div class="receipt-center" style="font-size:28px; font-weight:bold; margin:8px 0;">${escapeHtml(orderCode)}</div>
+      <div class="receipt-line"></div>
+      ${rowsHtml}
+      <div class="receipt-line"></div>
+      <div class="receipt-center">${new Date().toLocaleString("ja-JP")}</div>
+    `;
+    window.print();
   }
 
   // =========================================================================
