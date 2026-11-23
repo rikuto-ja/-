@@ -533,7 +533,11 @@
     <div class="cart-area">
       <div class="cart-header">
         <span style="font-weight: bold;">リスト</span>
-        <button class="danger" style="padding: 4px 10px; font-size: 14px;" onclick="clearCustCart()">クリア</button>
+        <div style="display: flex; gap: 4px;">
+          <button style="padding: 4px 8px; font-size: 12px;" onclick="moveCustCart('up')">上へ</button>
+          <button style="padding: 4px 8px; font-size: 12px;" onclick="moveCustCart('down')">下へ</button>
+          <button class="danger" style="padding: 4px 10px; font-size: 14px;" onclick="clearCustCart()">クリア</button>
+        </div>
       </div>
       <div class="cart-list" id="cust-cart-list"></div>
       <div class="totals-box">
