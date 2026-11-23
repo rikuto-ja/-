@@ -527,10 +527,6 @@
     <div class="header-controls" id="staff-header-controls">
       <button type="button" onclick="openOrderLookupModal()">モバイル番号入力</button>
       <button type="button" onclick="showCustomerQrModal()">モバイルQR</button>
-      <button type="button" id="sound-toggle-btn" onclick="toggleSound()">効果音: ON</button>
-      <button type="button" id="test-mode-btn" onclick="toggleTestMode()">テストモード: OFF</button>
-      <button type="button" id="self-checkout-btn" onclick="enableSelfCheckout()">セルフレジ</button>
-      <button type="button" class="danger" id="refund-mode-btn" onclick="toggleRefundMode()">払い戻し: OFF</button>
       <button type="button" onclick="openAdminModal()">メニュー</button>
       <button type="button" class="danger" onclick="handleLogout()">ログアウト</button>
     </div>
@@ -553,7 +549,7 @@
       <div class="cart-header">
         <span style="font-weight: bold;">お買上げ明細</span>
         <div style="display: flex; gap: 4px; flex-wrap: wrap;">
-          <button type="button" style="padding: 4px 8px; font-size: 12px;" onclick="createMobileOrderFromPos()">番号発行・印刷</button>
+          <button type="button" id="btn-issue-order-slip" style="padding: 4px 8px; font-size: 12px;" onclick="createMobileOrderFromPos()">番号発行・印刷</button>
           <button type="button" id="btn-save-mobile-order" disabled style="padding: 4px 8px; font-size: 12px;" onclick="saveLoadedMobileOrders()">番号編集保存</button>
           <button type="button" class="danger" style="padding: 4px 10px; font-size: 14px;" onclick="clearCart()">リセット</button>
         </div>
@@ -613,7 +609,6 @@
       <button type="button" style="flex: 1; padding: 14px;" onclick="editSubmittedCustomerOrder()">編集する</button>
       <button type="button" class="danger" style="flex: 1; padding: 14px;" onclick="deleteSubmittedCustomerOrder()">削除する</button>
     </div>
-    <button type="button" class="primary" style="width: 100%; max-width: 400px; padding: 14px; margin-top: 12px;" onclick="startNewCustomerOrder()">新しい注文を始める</button>
   </div>
 
   <div id="customer-order-deleted-view" class="hidden" style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 24px; text-align: center;">
@@ -660,7 +655,13 @@
       <h2>お会計</h2>
       <button type="button" onclick="closeModal('checkout-modal')">閉じる</button>
     </div>
-    <p style="font-weight: bold; margin-bottom: 6px;">支払い方法を選択</p>
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap;">
+      <p style="font-weight: bold;">支払い方法を選択</p>
+      <div id="self-payment-select-wrap" class="hidden" style="display: flex; align-items: center; gap: 6px;">
+        <label for="self-payment-select" style="font-size: 13px; font-weight: bold;">支払方法切替:</label>
+        <select id="self-payment-select" style="width: auto; padding: 4px 8px; font-size: 14px;" onchange="selectPaymentMethod(this.value)"></select>
+      </div>
+    </div>
     <div class="payment-methods" id="payment-method-buttons"></div>
 
     <div class="calc-display">
@@ -799,59 +800,6 @@
   </div>
 </div>
 
-<!-- 初期化モーダル（在庫管理の隣「初期化」ボタンから開く） -->
-<div id="reset-actions-modal" class="modal-overlay hidden" style="z-index: 2500;">
-  <div class="modal-content" style="max-width: 440px;">
-    <div class="modal-header">
-      <h2>データ初期化</h2>
-      <button type="button" onclick="closeModal('reset-actions-modal')">閉じる</button>
-    </div>
-    <p style="font-size: 13px; color: var(--dark-gray); margin-bottom: 14px;">
-      実行する初期化操作を選択してください（元に戻せない操作があります）。
-    </p>
-    <div style="display: flex; flex-direction: column; gap: 10px;">
-      <button type="button" class="danger" style="padding: 14px;" onclick="deleteAllProductsData()">商品削除（全商品削除）</button>
-      <button type="button" class="danger" style="padding: 14px;" onclick="deleteAllSalesData()">販売履歴削除（全履歴削除）</button>
-      <button type="button" class="danger solid" style="padding: 14px;" onclick="resetAllStoreData()">初期化（店舗・商品・履歴リセット）</button>
-    </div>
-  </div>
-</div>
-
-<!-- 担当者管理モーダル（在庫管理の隣「担当者設定」ボタンから開く） -->
-<div id="staff-assign-modal" class="modal-overlay hidden" style="z-index: 2500;">
-  <div class="modal-content" style="max-width: 520px;">
-    <div class="modal-header">
-      <h2>レジ打ち担当者・社員登録</h2>
-      <button type="button" onclick="closeModal('staff-assign-modal')">閉じる</button>
-    </div>
-    <div style="margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid #ccc;">
-      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: bold;">
-        <input type="checkbox" id="staff-tracking-enabled" style="width: auto; transform: scale(1.2);" onchange="toggleStaffTrackingEnabled()">
-        <span>レジ打ち担当者記録機能を有効にする（OFFにすると記録・表示しません）</span>
-      </label>
-    </div>
-
-    <div id="staff-tracking-controls">
-      <div style="margin-bottom: 14px;">
-        <label style="font-weight: bold; display: block; margin-bottom: 6px;">現在のレジ打ち担当者を選択</label>
-        <div style="display: flex; gap: 8px;">
-          <select id="current-cashier-select" style="flex: 1;"></select>
-          <button type="button" class="primary" onclick="applyCurrentCashier()">担当に設定</button>
-        </div>
-      </div>
-
-      <div>
-        <label style="font-weight: bold; display: block; margin-bottom: 6px;">レジ打ち社員の登録</label>
-        <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-          <input type="text" id="new-staff-name" placeholder="社員名を入力（例: 田中 太郎）">
-          <button type="button" class="primary" onclick="addStaffMember()">登録</button>
-        </div>
-        <ul id="staff-member-list" style="list-style: none;"></ul>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- 販売履歴詳細モーダル -->
 <div id="sale-detail-modal" class="modal-overlay hidden" style="z-index: 2500;">
   <div class="modal-content" style="max-width: 540px;">
@@ -860,6 +808,21 @@
       <button type="button" onclick="closeModal('sale-detail-modal')">閉じる</button>
     </div>
     <div id="sale-detail-body" style="font-size: 14px; line-height: 1.6;"></div>
+  </div>
+</div>
+
+<!-- 払い戻し完了モーダル -->
+<div id="refund-complete-modal" class="modal-overlay hidden" style="z-index: 2500;">
+  <div class="modal-content" style="text-align: center; max-width: 440px;">
+    <div class="modal-header">
+      <h2>払い戻し完了</h2>
+    </div>
+    <p id="refund-complete-summary" style="font-size: 18px; font-weight: bold; margin: 16px 0;"></p>
+    <p style="font-size: 14px; color: var(--dark-gray); margin-bottom: 16px;">払い戻し伝票を印刷しますか？</p>
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <button type="button" class="primary" style="padding: 14px; font-size: 16px;" onclick="printCompletedRefundSlip()">払い戻し伝票を印刷する</button>
+      <button type="button" style="padding: 12px;" onclick="closeRefundCompleteModal()">印刷せずに閉じる</button>
+    </div>
   </div>
 </div>
 
@@ -878,8 +841,9 @@
       <button type="button" onclick="switchAdminTab('tab-sales', this)">売上履歴・再発行・払戻</button>
       <button type="button" onclick="switchAdminTab('tab-store', this)">店舗・レシート設定</button>
       <button type="button" onclick="switchAdminTab('tab-inventory', this)">在庫管理</button>
-      <button type="button" onclick="openResetActionsModal()">初期化</button>
-      <button type="button" onclick="openStaffAssignModal()">担当者設定</button>
+      <button type="button" onclick="switchAdminTab('tab-staff', this)">担当者</button>
+      <button type="button" onclick="switchAdminTab('tab-ops-settings', this)">設定</button>
+      <button type="button" onclick="switchAdminTab('tab-reset', this)">初期化</button>
     </div>
 
     <!-- タブ1：商品・在庫管理 -->
@@ -981,7 +945,7 @@
         <div><label>電話番号</label><input type="text" id="set-store-phone"></div>
         <div><label>インボイス登録番号 (T+13桁)</label><input type="text" id="set-invoice-no" placeholder="T1234567890123"></div>
         <div><label>レシート下部メッセージ</label><input type="text" id="set-receipt-footer" placeholder="ありがとうございました"></div>
-        <div><label>セルフレジ解除用パスワード（未入力時はセルフレジ切替不可）</label><input type="text" id="set-staff-pass" placeholder="例: 1234"></div>
+        <div><label>セルフレジ解除用パスワード（未入力時はセルフレジ切替不可・ボタン灰色）</label><input type="text" id="set-staff-pass" placeholder="例: 1234"></div>
         <button type="button" class="primary" style="padding: 14px;" onclick="saveStoreSettings()">設定を保存する</button>
       </div>
     </div>
@@ -1002,6 +966,67 @@
           </thead>
           <tbody id="admin-inventory-list"></tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- タブ7：担当者（社員登録・現在の担当者・記録ON/OFF） -->
+    <div id="tab-staff" class="admin-section">
+      <h3>レジ打ち担当者・社員登録</h3>
+      <div style="margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid #ccc;">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: bold;">
+          <input type="checkbox" id="staff-tracking-enabled" style="width: auto; transform: scale(1.2);" onchange="toggleStaffTrackingEnabled()">
+          <span>レジ打ち担当者記録機能を有効にする（デフォルトOFF：OFF時は記録・表示しません）</span>
+        </label>
+      </div>
+
+      <div id="staff-tracking-controls">
+        <div style="margin-bottom: 16px;">
+          <label style="font-weight: bold; display: block; margin-bottom: 6px;">今レジ打ちしている担当者</label>
+          <div style="display: flex; gap: 8px;">
+            <select id="current-cashier-select" style="flex: 1;"></select>
+            <button type="button" class="primary" onclick="applyCurrentCashier()">担当に設定</button>
+          </div>
+        </div>
+
+        <div>
+          <label style="font-weight: bold; display: block; margin-bottom: 6px;">レジ打ち社員の登録</label>
+          <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+            <input type="text" id="new-staff-name" placeholder="社員名を入力（例: 田中 太郎）">
+            <button type="button" class="primary" onclick="addStaffMember()">登録</button>
+          </div>
+          <ul id="staff-member-list" style="list-style: none;"></ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- タブ8：設定（効果音・セルフレジ・払戻・テストモード） -->
+    <div id="tab-ops-settings" class="admin-section">
+      <h3>レジ動作設定</h3>
+      <p style="font-size: 13px; color: var(--dark-gray); margin-bottom: 14px;">
+        効果音・セルフレジ・払い戻し・テストモードを切り替えます。
+      </p>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 20px;">
+        <button type="button" id="admin-sound-toggle-btn" onclick="toggleSound()">効果音: ON</button>
+        <button type="button" id="admin-self-checkout-btn" onclick="enableSelfCheckoutFromAdmin()">セルフレジ</button>
+        <button type="button" class="danger" id="admin-refund-mode-btn" onclick="toggleRefundMode()">払い戻し: OFF</button>
+        <button type="button" id="admin-test-mode-btn" onclick="toggleTestMode()">テストモード: OFF</button>
+      </div>
+      <div style="border-top: 1px solid #ccc; padding-top: 12px; font-size: 13px; color: var(--dark-gray); line-height: 1.6;">
+        <div><strong>※セルフレジボタンについて:</strong> 「店舗・レシート設定」でセルフレジ解除用パスワードが未入力の場合、セルフレジボタンは灰色になり押せません。</div>
+        <div><strong>※効果音URL設定:</strong> コード内の <code>SOUND_URLS</code> に音源URLを設定すると再生されます。</div>
+      </div>
+    </div>
+
+    <!-- タブ9：初期化（商品削除・販売履歴削除・初期化） -->
+    <div id="tab-reset" class="admin-section">
+      <h3>データ初期化</h3>
+      <p style="font-size: 13px; color: var(--dark-gray); margin-bottom: 14px;">
+        実行する初期化操作を選択してください（元に戻せない操作があります）。
+      </p>
+      <div style="display: flex; flex-direction: column; gap: 10px; max-width: 420px;">
+        <button type="button" class="danger" style="padding: 14px;" onclick="deleteAllProductsData()">商品削除（全商品削除）</button>
+        <button type="button" class="danger" style="padding: 14px;" onclick="deleteAllSalesData()">販売履歴削除（全履歴削除）</button>
+        <button type="button" class="danger solid" style="padding: 14px;" onclick="resetAllStoreData()">初期化（店舗・商品・履歴リセット）</button>
       </div>
     </div>
   </div>
@@ -1064,7 +1089,7 @@
   };
 
   // =========================================================================
-  // 2. 効果音設定
+  // 2. 効果音設定（GitHub等にアップロードした音声ファイルURLを指定可能）
   // =========================================================================
   const SOUND_URLS = {
     buttonClick: "",
@@ -1074,6 +1099,17 @@
   const audioClick = SOUND_URLS.buttonClick ? new Audio(SOUND_URLS.buttonClick) : null;
   const audioCheckout = SOUND_URLS.checkoutDone ? new Audio(SOUND_URLS.checkoutDone) : null;
   let isSoundOn = true;
+
+  function syncSoundButtons() {
+    const label = `効果音: ${isSoundOn ? "ON" : "OFF"}`;
+    const btn1 = document.getElementById("sound-toggle-btn");
+    const btn2 = document.getElementById("admin-sound-toggle-btn");
+    if (btn1) btn1.textContent = label;
+    if (btn2) {
+      btn2.textContent = label;
+      btn2.classList.toggle("primary", isSoundOn);
+    }
+  }
 
   window.playClickSound = () => {
     if (!isSoundOn || !audioClick) return;
@@ -1089,7 +1125,7 @@
 
   window.toggleSound = () => {
     isSoundOn = !isSoundOn;
-    document.getElementById("sound-toggle-btn").textContent = `効果音: ${isSoundOn ? "ON" : "OFF"}`;
+    syncSoundButtons();
     playClickSound();
   };
 
@@ -1122,7 +1158,7 @@
       receiptFooter: "毎度ありがとうございます。",
       staffPass: "",
       stockEnabled: false,
-      staffTrackingEnabled: true,
+      staffTrackingEnabled: false,
       staffMembers: [],
       currentCashier: "",
       products: [],
@@ -1142,7 +1178,7 @@
   let isRefundMode = false;
   let isTestMode = false;
   let isSelfCheckout = false;
-  let cart = []; // { productId, name, price, qty, taxRate, discount }
+  let cart = [];
   let globalDiscount = null;
   let selectedCategory = "すべて";
   let discountTargetIndex = null;
@@ -1152,6 +1188,7 @@
   let selectedPayment = "現金";
   let cashDeposit = 0;
   let lastCompletedSale = null;
+  let lastCompletedRefund = null;
 
   // テンキーステート
   let numpadTargetInputId = null;
@@ -1243,11 +1280,12 @@
   }
 
   function updateSelfCheckoutButtonState() {
-    const btn = document.getElementById("self-checkout-btn");
-    if (!btn) return;
     const hasPass = Boolean(String(storeData.staffPass || "").trim());
-    btn.disabled = !hasPass;
-    btn.title = hasPass ? "" : "店舗設定でセルフレジ解除用パスワードを設定してください";
+    const adminBtn = document.getElementById("admin-self-checkout-btn");
+    if (adminBtn) {
+      adminBtn.disabled = !hasPass;
+      adminBtn.title = hasPass ? "" : "店舗設定でセルフレジ解除用パスワードを入力してください";
+    }
   }
 
   function updateCashierBadge() {
@@ -1267,10 +1305,34 @@
     return String(storeData.currentCashier || "").trim() || "未設定";
   }
 
+  function syncPosActionStatesForMode() {
+    const issueBtn = document.getElementById("btn-issue-order-slip");
+    if (issueBtn) issueBtn.disabled = isSelfCheckout;
+
+    const globalDiscBtn = document.getElementById("btn-global-discount");
+    if (globalDiscBtn) {
+      globalDiscBtn.classList.remove("hidden");
+      globalDiscBtn.disabled = isSelfCheckout;
+    }
+
+    syncSoundButtons();
+    const adminTestBtn = document.getElementById("admin-test-mode-btn");
+    if (adminTestBtn) {
+      adminTestBtn.textContent = `テストモード: ${isTestMode ? "ON" : "OFF"}`;
+      adminTestBtn.classList.toggle("primary", isTestMode);
+    }
+    const adminRefundBtn = document.getElementById("admin-refund-mode-btn");
+    if (adminRefundBtn) {
+      adminRefundBtn.textContent = `払い戻し: ${isRefundMode ? "ON" : "OFF"}`;
+      adminRefundBtn.classList.toggle("solid", isRefundMode);
+    }
+  }
+
   function updateHeaderAndUI() {
     applyStockVisibilityState();
     updateSelfCheckoutButtonState();
     updateCashierBadge();
+    syncPosActionStatesForMode();
     document.getElementById("header-store-name").textContent = storeData.name;
     renderCategories();
     renderProducts();
@@ -1279,12 +1341,26 @@
   }
 
   // =========================================================================
-  // 6. POS商品表示・カート操作・金額計算（税率別対応）
+  // 6. POS商品表示・カート操作・金額計算（整数・10倍スケールで浮動小数点誤差を回避）
   // =========================================================================
   function normalizeTaxRate(rate) {
     const n = Number(rate);
     if (!Number.isFinite(n) || n < 0) return 10;
-    return n;
+    // 0.1%単位の整数（例: 10% -> 100, 8% -> 80, 5.5% -> 55）で正規化して浮動小数点誤差を防止
+    return Math.round(n * 10) / 10;
+  }
+
+  function taxRateTenths(rate) {
+    return Math.round(normalizeTaxRate(rate) * 10);
+  }
+
+  // 税込金額 amt と税率（0.1%単位の整数 rateTenths）から内消費税を整数演算で算出
+  // 税率 r(%) = rateTenths / 10 => 内税 = floor(amt * rateTenths / (1000 + rateTenths))
+  function calcIncludedTaxInt(amt, rateTenths) {
+    const amountInt = Math.max(0, Math.round(Number(amt) || 0));
+    const t = Math.max(0, Math.round(Number(rateTenths) || 0));
+    if (t === 0 || amountInt === 0) return 0;
+    return Math.floor((amountInt * t) / (1000 + t));
   }
 
   function renderCategories() {
@@ -1321,7 +1397,7 @@
       btn.innerHTML = `
         <div class="p-name">${escapeHtml(p.name)} <span style="font-size:11px; color:var(--dark-gray);">(${rate}%)</span></div>
         <div class="p-bottom">
-          <span class="p-price">¥${p.price.toLocaleString()}</span>
+          <span class="p-price">¥${Number(p.price || 0).toLocaleString()}</span>
           <span class="p-stock">残:${p.stock}</span>
         </div>
       `;
@@ -1344,7 +1420,7 @@
       cart.push({
         productId: product.id,
         name: product.name,
-        price: product.price,
+        price: Math.round(Number(product.price || 0)),
         qty: 1,
         taxRate: normalizeTaxRate(product.taxRate),
         discount: null
@@ -1384,13 +1460,17 @@
     let itemDiscountTotal = 0;
 
     const lineDetails = cart.map(item => {
-      const lineTotal = item.price * item.qty;
+      const priceInt = Math.round(Number(item.price || 0));
+      const qtyInt = Math.max(0, Math.floor(Number(item.qty || 0)));
+      const lineTotal = priceInt * qtyInt;
       let lineDisc = 0;
       if (item.discount) {
+        const dVal = Math.round(Number(item.discount.value || 0));
         if (item.discount.type === "yen") {
-          lineDisc = Math.min(lineTotal, item.discount.value * item.qty);
+          lineDisc = Math.min(lineTotal, dVal * qtyInt);
         } else {
-          lineDisc = Math.floor(lineTotal * (item.discount.value / 100));
+          // 整数演算: floor(lineTotal * dVal / 100)
+          lineDisc = Math.floor((lineTotal * dVal) / 100);
         }
       }
       subtotal += lineTotal;
@@ -1400,7 +1480,8 @@
         lineTotal,
         lineDisc,
         netAfterItemDisc: Math.max(0, lineTotal - lineDisc),
-        taxRate: normalizeTaxRate(item.taxRate)
+        rate: normalizeTaxRate(item.taxRate),
+        tenths: taxRateTenths(item.taxRate)
       };
     });
 
@@ -1408,11 +1489,13 @@
     const appliedAutoMessages = [];
     storeData.autoDiscounts.forEach(rule => {
       const targetItem = cart.find(c => c.productId === rule.productId);
-      if (targetItem && targetItem.qty >= rule.minQty) {
-        const sets = Math.floor(targetItem.qty / rule.minQty);
-        const disc = sets * rule.discountAmount;
+      const minQty = Math.max(1, Math.floor(Number(rule.minQty || 1)));
+      const discAmt = Math.round(Number(rule.discountAmount || 0));
+      if (targetItem && targetItem.qty >= minQty) {
+        const sets = Math.floor(targetItem.qty / minQty);
+        const disc = sets * discAmt;
         autoDiscountTotal += disc;
-        appliedAutoMessages.push(`自動割引(${rule.productName} ${rule.minQty}個毎): -¥${disc.toLocaleString()}`);
+        appliedAutoMessages.push(`自動割引(${rule.productName} ${minQty}個毎): -¥${disc.toLocaleString()}`);
       }
     });
 
@@ -1420,17 +1503,18 @@
 
     let globalDiscountAmount = 0;
     if (globalDiscount) {
+      const gVal = Math.round(Number(globalDiscount.value || 0));
       if (globalDiscount.type === "yen") {
-        globalDiscountAmount = Math.min(afterItemAndAuto, globalDiscount.value);
+        globalDiscountAmount = Math.min(afterItemAndAuto, gVal);
       } else {
-        globalDiscountAmount = Math.floor(afterItemAndAuto * (globalDiscount.value / 100));
+        globalDiscountAmount = Math.floor((afterItemAndAuto * gVal) / 100);
       }
     }
 
     const totalDiscount = itemDiscountTotal + autoDiscountTotal + globalDiscountAmount;
     const grandTotal = Math.max(0, subtotal - totalDiscount);
 
-    // 税率ごとの内消費税計算（全体割引・自動割引は明細の正味金額比率で按分）
+    // 税率ごとの内消費税計算（整数按分）
     const taxByRateMap = new Map();
     const extraDiscToDistribute = autoDiscountTotal + globalDiscountAmount;
     const baseSumForDist = lineDetails.reduce((acc, d) => acc + d.netAfterItemDisc, 0);
@@ -1442,18 +1526,17 @@
         if (idx === lineDetails.length - 1) {
           extraShare = Math.min(d.netAfterItemDisc, Math.max(0, extraDiscToDistribute - distributedExtra));
         } else {
-          extraShare = Math.min(d.netAfterItemDisc, Math.floor(extraDiscToDistribute * (d.netAfterItemDisc / baseSumForDist)));
+          extraShare = Math.min(d.netAfterItemDisc, Math.floor((extraDiscToDistribute * d.netAfterItemDisc) / baseSumForDist));
           distributedExtra += extraShare;
         }
       }
       const finalLineAmount = Math.max(0, d.netAfterItemDisc - extraShare);
-      const rate = d.taxRate;
-      const lineTax = rate > 0 ? Math.floor(finalLineAmount * rate / (100 + rate)) : 0;
+      const lineTax = calcIncludedTaxInt(finalLineAmount, d.tenths);
 
-      const prev = taxByRateMap.get(rate) || { rate, taxableAmount: 0, taxAmount: 0 };
+      const prev = taxByRateMap.get(d.rate) || { rate: d.rate, taxableAmount: 0, taxAmount: 0 };
       prev.taxableAmount += finalLineAmount;
       prev.taxAmount += lineTax;
-      taxByRateMap.set(rate, prev);
+      taxByRateMap.set(d.rate, prev);
     });
 
     const taxBreakdown = Array.from(taxByRateMap.values()).sort((a, b) => a.rate - b.rate);
@@ -1491,7 +1574,7 @@
       div.innerHTML = `
         <div class="cart-item-info">
           <div class="cart-item-title">${escapeHtml(item.name)} <span style="font-size:12px; color:var(--dark-gray);">[${rate}%]</span></div>
-          <div class="cart-item-sub">¥${item.price.toLocaleString()} × ${item.qty} <span style="color:var(--red);">${discText}</span></div>
+          <div class="cart-item-sub">¥${Number(item.price || 0).toLocaleString()} × ${item.qty} <span style="color:var(--red);">${discText}</span></div>
         </div>
         <div class="cart-item-actions">
           ${discBtnHtml}
@@ -1582,19 +1665,19 @@
   window.toggleTestMode = () => {
     isTestMode = !isTestMode;
     document.body.classList.toggle("test-mode", isTestMode);
-    const btn = document.getElementById("test-mode-btn");
-    btn.textContent = `テストモード: ${isTestMode ? "ON" : "OFF"}`;
-    btn.classList.toggle("primary", isTestMode);
     const badge = document.getElementById("test-mode-badge");
     if (badge) badge.classList.toggle("hidden", !isTestMode);
+    syncPosActionStatesForMode();
   };
 
   window.toggleRefundMode = () => {
     isRefundMode = !isRefundMode;
     document.body.classList.toggle("refund-mode", isRefundMode);
     const btn = document.getElementById("refund-mode-btn");
-    btn.textContent = `払い戻し: ${isRefundMode ? "ON" : "OFF"}`;
-    btn.classList.toggle("solid", isRefundMode);
+    if (btn) {
+      btn.textContent = `払い戻し: ${isRefundMode ? "ON" : "OFF"}`;
+      btn.classList.toggle("solid", isRefundMode);
+    }
 
     cart = [];
     globalDiscount = null;
@@ -1604,6 +1687,7 @@
     actionBtn.classList.toggle("solid", isRefundMode);
     actionBtn.classList.toggle("primary", !isRefundMode);
 
+    syncPosActionStatesForMode();
     renderProducts();
     renderCart();
   };
@@ -1646,9 +1730,21 @@
       await addDoc(collection(db, "stores", storeId, "sales"), refundRecord);
     }
 
-    printRefundSlip(refundRecord);
-    alert(isTestMode ? "テストモードで払い戻し伝票を発行しました（販売履歴には保存されません）。" : "選択した商品の払い戻しと伝票印刷が完了しました。");
+    lastCompletedRefund = refundRecord;
+    document.getElementById("refund-complete-summary").textContent =
+      `${isTestMode ? "[テストモード] " : ""}払戻合計: -¥${totals.grandTotal.toLocaleString()}`;
+    document.getElementById("refund-complete-modal").classList.remove("hidden");
     clearCart();
+  };
+
+  window.printCompletedRefundSlip = () => {
+    if (!lastCompletedRefund) return;
+    printRefundSlip(lastCompletedRefund);
+  };
+
+  window.closeRefundCompleteModal = () => {
+    lastCompletedRefund = null;
+    closeModal("refund-complete-modal");
   };
 
   window.openNumpadForInput = (inputId, title) => {
@@ -1726,8 +1822,16 @@
     isSelfCheckout = true;
     document.getElementById("staff-header-controls").classList.add("hidden");
     document.getElementById("self-header-controls").classList.remove("hidden");
-    document.getElementById("btn-global-discount").classList.add("hidden");
+    syncPosActionStatesForMode();
     renderCart();
+  };
+
+  window.enableSelfCheckoutFromAdmin = () => {
+    if (!String(storeData.staffPass || "").trim()) {
+      return alert("セルフレジ解除用パスワードが設定されていません。店舗設定からパスワードを入力してください。");
+    }
+    closeModal("admin-modal");
+    window.enableSelfCheckout();
   };
 
   window.triggerStaffCall = () => {
@@ -1765,7 +1869,7 @@
     document.getElementById("staff-call-notice").classList.remove("hidden");
     document.getElementById("staff-header-controls").classList.remove("hidden");
     document.getElementById("self-header-controls").classList.add("hidden");
-    document.getElementById("btn-global-discount").classList.remove("hidden");
+    syncPosActionStatesForMode();
     renderCart();
   };
 
@@ -1784,19 +1888,43 @@
     document.getElementById("checkout-modal").classList.remove("hidden");
   };
 
+  window.selectPaymentMethod = (methodName) => {
+    selectedPayment = methodName || "現金";
+    renderPaymentMethods();
+    updateCheckoutDisplay();
+  };
+
   function renderPaymentMethods() {
     const container = document.getElementById("payment-method-buttons");
+    const selectWrap = document.getElementById("self-payment-select-wrap");
+    const selEl = document.getElementById("self-payment-select");
     container.innerHTML = "";
     const methods = ["現金", ...storeData.paymentMethods];
+
+    if (selEl) {
+      selEl.innerHTML = "";
+      methods.forEach(m => {
+        const opt = document.createElement("option");
+        opt.value = m;
+        opt.textContent = m;
+        if (m === selectedPayment) opt.selected = true;
+        selEl.appendChild(opt);
+      });
+    }
+
+    if (selectWrap) {
+      selectWrap.classList.toggle("hidden", !isSelfCheckout);
+    }
+
     methods.forEach(m => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.textContent = m;
       if (m === selectedPayment) btn.classList.add("selected");
+      btn.disabled = isSelfCheckout;
       btn.onclick = () => {
-        selectedPayment = m;
-        renderPaymentMethods();
-        updateCheckoutDisplay();
+        if (isSelfCheckout) return;
+        window.selectPaymentMethod(m);
       };
       container.appendChild(btn);
     });
@@ -1907,7 +2035,7 @@
       itemsHtml += `
         <div class="receipt-row">
           <span>${escapeHtml(i.name)} (${rate}%) ×${i.qty}</span>
-          <span>¥${(i.price * i.qty).toLocaleString()}</span>
+          <span>¥${(Number(i.price || 0) * Number(i.qty || 0)).toLocaleString()}</span>
         </div>
       `;
     });
@@ -1969,7 +2097,7 @@
       return `
         <div class="receipt-row">
           <span>${escapeHtml(i.name)} (${rate}%) ×${i.qty}</span>
-          <span>-¥${(i.price * i.qty).toLocaleString()}</span>
+          <span>-¥${(Number(i.price || 0) * Number(i.qty || 0)).toLocaleString()}</span>
         </div>
       `;
     }).join("");
@@ -2089,7 +2217,7 @@
       btn.innerHTML = `
         <div class="p-name">${escapeHtml(p.name)}</div>
         <div class="p-bottom">
-          <span class="p-price">¥${p.price.toLocaleString()}</span>
+          <span class="p-price">¥${Number(p.price || 0).toLocaleString()}</span>
           <span class="p-stock">残:${p.stock}</span>
         </div>
       `;
@@ -2102,7 +2230,7 @@
           custCart.push({
             productId: p.id,
             name: p.name,
-            price: p.price,
+            price: Math.round(Number(p.price || 0)),
             qty: 1,
             taxRate: normalizeTaxRate(p.taxRate)
           });
@@ -2118,13 +2246,13 @@
     list.innerHTML = "";
     let total = 0;
     custCart.forEach((item, idx) => {
-      total += item.price * item.qty;
+      total += Number(item.price || 0) * Number(item.qty || 0);
       const div = document.createElement("div");
       div.className = "cart-item";
       div.innerHTML = `
         <div class="cart-item-info">
           <div class="cart-item-title">${escapeHtml(item.name)}</div>
-          <div class="cart-item-sub">¥${item.price.toLocaleString()} × ${item.qty}</div>
+          <div class="cart-item-sub">¥${Number(item.price || 0).toLocaleString()} × ${item.qty}</div>
         </div>
         <div class="cart-item-actions">
           <button type="button" onclick="changeCustQty(${idx}, -1)">-</button>
@@ -2171,25 +2299,29 @@
     console.log("[submitCustomerOrder] submittedOrderDocId:", submittedOrderDocId, "custCart:", custCart);
     if (custCart.length === 0) return alert("商品を選んでください");
     const ordersCol = collection(db, "stores", storeId, "orders");
+    const itemsSnapshot = JSON.parse(JSON.stringify(custCart));
 
     if (submittedOrderDocId) {
       await updateDoc(doc(db, "stores", storeId, "orders", submittedOrderDocId), {
-        items: JSON.parse(JSON.stringify(custCart)),
+        items: itemsSnapshot,
         status: "pending",
         updatedAt: new Date().toISOString()
       });
+      if (!submittedOrderCode) {
+        submittedOrderCode = String(Math.floor(1000 + Math.random() * 9000));
+      }
     } else {
       submittedOrderCode = String(Math.floor(1000 + Math.random() * 9000));
       const orderDocRef = await addDoc(ordersCol, {
         orderCode: submittedOrderCode,
-        items: JSON.parse(JSON.stringify(custCart)),
+        items: itemsSnapshot,
         status: "pending",
         createdAt: new Date().toISOString()
       });
       submittedOrderDocId = orderDocRef.id;
     }
 
-    submittedOrderItems = JSON.parse(JSON.stringify(custCart));
+    submittedOrderItems = itemsSnapshot;
     custCart = [];
     renderCustCart();
     showCustomerOrderCompleteView();
@@ -2206,11 +2338,25 @@
     unsubscribeOrderStatus = onSnapshot(doc(db, "stores", storeId, "orders", submittedOrderDocId), (snap) => {
       console.log("[watchSubmittedOrderStatus] exists:", snap.exists(), "data:", snap.data());
       if (!snap.exists()) {
+        if (unsubscribeOrderStatus) {
+          unsubscribeOrderStatus();
+          unsubscribeOrderStatus = null;
+        }
+        submittedOrderDocId = null;
+        submittedOrderCode = null;
+        submittedOrderItems = [];
         switchCustomerView("customer-order-deleted-view");
         return;
       }
       const data = snap.data();
       if (data.status === "completed") {
+        if (unsubscribeOrderStatus) {
+          unsubscribeOrderStatus();
+          unsubscribeOrderStatus = null;
+        }
+        submittedOrderDocId = null;
+        submittedOrderCode = null;
+        submittedOrderItems = [];
         switchCustomerView("customer-checkout-done-view");
       }
     });
@@ -2218,9 +2364,9 @@
 
   function showCustomerOrderCompleteView() {
     switchCustomerView("customer-order-complete-view");
-    document.getElementById("completed-order-code-display").textContent = submittedOrderCode;
+    document.getElementById("completed-order-code-display").textContent = submittedOrderCode || "----";
     document.getElementById("completed-order-items-preview").innerHTML = submittedOrderItems
-      .map(i => `<div style="display:flex; justify-content:space-between; padding:3px 0;"><span>${escapeHtml(i.name)} ×${i.qty}</span><span>¥${(i.price * i.qty).toLocaleString()}</span></div>`)
+      .map(i => `<div style="display:flex; justify-content:space-between; padding:3px 0;"><span>${escapeHtml(i.name)} ×${i.qty}</span><span>¥${(Number(i.price || 0) * Number(i.qty || 0)).toLocaleString()}</span></div>`)
       .join("");
   }
 
@@ -2236,16 +2382,16 @@
     if (!submittedOrderDocId) return alert("削除対象の注文が見つかりません");
     const docIdToDelete = submittedOrderDocId;
     submittedOrderDocId = null;
+    submittedOrderCode = null;
+    submittedOrderItems = [];
     if (unsubscribeOrderStatus) {
       unsubscribeOrderStatus();
       unsubscribeOrderStatus = null;
     }
     await deleteDoc(doc(db, "stores", storeId, "orders", docIdToDelete));
-    submittedOrderCode = null;
-    submittedOrderItems = [];
     custCart = [];
     renderCustCart();
-    switchCustomerView("main-pos");
+    switchCustomerView("customer-order-deleted-view");
   };
 
   window.startNewCustomerOrder = () => {
@@ -2273,6 +2419,12 @@
 
     const listDiv = document.getElementById("recent-orders-list");
     listDiv.innerHTML = "";
+
+    // セルフレジモード時は未会計の注文一覧を非表示にして番号入力のみにする
+    if (isSelfCheckout) {
+      return;
+    }
+
     const q = query(collection(db, "stores", storeId, "orders"), where("status", "==", "pending"));
     const snap = await getDocs(q);
     if (!snap.empty) {
@@ -2288,17 +2440,14 @@
         addBtn.textContent = `番号: ${data.orderCode} (${data.items.length}点) を追加`;
         addBtn.onclick = () => loadOrderIntoCart(d.id, data);
 
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.className = "danger";
+        delBtn.textContent = "削除";
+        delBtn.onclick = () => deleteOrderById(d.id, data.orderCode);
+
         row.appendChild(addBtn);
-
-        if (!isSelfCheckout) {
-          const delBtn = document.createElement("button");
-          delBtn.type = "button";
-          delBtn.className = "danger";
-          delBtn.textContent = "削除";
-          delBtn.onclick = () => deleteOrderById(d.id, data.orderCode);
-          row.appendChild(delBtn);
-        }
-
+        row.appendChild(delBtn);
         listDiv.appendChild(row);
       });
     }
@@ -2334,7 +2483,7 @@
     }
     loadedOrderDocIds.push(docId);
 
-    orderData.items.forEach(i => {
+    (orderData.items || []).forEach(i => {
       const prod = storeData.products.find(p => p.id === i.productId);
       const rate = normalizeTaxRate(i.taxRate !== undefined ? i.taxRate : prod?.taxRate);
       const existing = cart.find(c => c.productId === i.productId && !c.discount);
@@ -2344,8 +2493,8 @@
         cart.push({
           productId: i.productId,
           name: i.name,
-          price: i.price,
-          qty: i.qty,
+          price: Math.round(Number(i.price || 0)),
+          qty: Number(i.qty || 1),
           taxRate: rate,
           discount: null
         });
@@ -2358,14 +2507,15 @@
   }
 
   window.createMobileOrderFromPos = async () => {
+    if (isSelfCheckout) return;
     console.log("[createMobileOrderFromPos] cart:", cart);
     if (cart.length === 0) return alert("先に商品をカートに入れてください");
     const orderCode = String(Math.floor(1000 + Math.random() * 9000));
     const itemsCopy = cart.map(i => ({
       productId: i.productId,
       name: i.name,
-      price: i.price,
-      qty: i.qty,
+      price: Math.round(Number(i.price || 0)),
+      qty: Number(i.qty || 1),
       taxRate: normalizeTaxRate(i.taxRate)
     }));
     await addDoc(collection(db, "stores", storeId, "orders"), {
@@ -2385,8 +2535,8 @@
     const itemsCopy = cart.map(i => ({
       productId: i.productId,
       name: i.name,
-      price: i.price,
-      qty: i.qty,
+      price: Math.round(Number(i.price || 0)),
+      qty: Number(i.qty || 1),
       taxRate: normalizeTaxRate(i.taxRate)
     }));
     for (const docId of loadedOrderDocIds) {
@@ -2402,7 +2552,7 @@
   function printMobileOrderSlip(orderCode, items) {
     const area = document.getElementById("print-area");
     const rowsHtml = items.map(i =>
-      `<div class="receipt-row"><span>${escapeHtml(i.name)} ×${i.qty}</span><span>¥${(i.price * i.qty).toLocaleString()}</span></div>`
+      `<div class="receipt-row"><span>${escapeHtml(i.name)} ×${i.qty}</span><span>¥${(Number(i.price || 0) * Number(i.qty || 0)).toLocaleString()}</span></div>`
     ).join("");
     area.innerHTML = `
       <div class="receipt-center receipt-bold" style="font-size:16px;">モバイル注文番号票</div>
@@ -2416,16 +2566,18 @@
   }
 
   // =========================================================================
-  // 11. 裏メニュー（管理画面・在庫管理・初期化・担当者設定・売上＆Excel）
+  // 11. 裏メニュー（管理画面内タブで完結：商品・割引・支払・売上・店舗・在庫・担当者・設定・初期化）
   // =========================================================================
   window.openAdminModal = async () => {
     if (isSelfCheckout) return;
     renderAdminProducts();
     renderAdminInventory();
+    renderStaffTabUI();
     renderAdminDiscounts();
     renderAdminPayments();
     await renderAdminSales();
     loadStoreSettingsToForm();
+    syncPosActionStatesForMode();
     document.getElementById("admin-modal").classList.remove("hidden");
   };
 
@@ -2434,6 +2586,9 @@
     document.querySelectorAll(".admin-tabs button").forEach(el => el.classList.remove("active"));
     document.getElementById(tabId).classList.add("active");
     btnEl.classList.add("active");
+    if (tabId === "tab-staff") renderStaffTabUI();
+    if (tabId === "tab-inventory") renderAdminInventory();
+    if (tabId === "tab-ops-settings") syncPosActionStatesForMode();
   };
 
   window.handleProdTaxPresetChange = () => {
@@ -2447,9 +2602,9 @@
     const preset = document.getElementById("prod-tax-preset").value;
     if (preset === "custom") {
       const customVal = Number(document.getElementById("prod-tax-custom").value);
-      return Number.isFinite(customVal) && customVal >= 0 ? customVal : null;
+      return Number.isFinite(customVal) && customVal >= 0 ? normalizeTaxRate(customVal) : null;
     }
-    return Number(preset);
+    return normalizeTaxRate(Number(preset));
   }
 
   function setProductTaxFormValue(rate) {
@@ -2476,7 +2631,7 @@
       tr.innerHTML = `
         <td>${escapeHtml(p.name)}</td>
         <td>${escapeHtml(p.category || "")}</td>
-        <td>¥${p.price.toLocaleString()}</td>
+        <td>¥${Number(p.price || 0).toLocaleString()}</td>
         <td>${rate}%</td>
         <td>${p.stock}</td>
         <td>
@@ -2491,13 +2646,13 @@
   window.saveProduct = async () => {
     const id = document.getElementById("edit-prod-id").value;
     const name = document.getElementById("prod-name").value.trim();
-    const price = Number(document.getElementById("prod-price").value);
+    const price = Math.round(Number(document.getElementById("prod-price").value));
     const category = document.getElementById("prod-cat").value.trim() || "一般";
-    const stock = Number(document.getElementById("prod-stock").value);
+    const stock = Math.floor(Number(document.getElementById("prod-stock").value));
     const taxRate = getSelectedProductTaxRate();
 
-    if (!name || price < 0 || taxRate === null || taxRate > 100) {
-      return alert("商品名・価格・消費税率（0〜100%）を正しく入力してください");
+    if (!name || !Number.isFinite(price) || price < 0 || !Number.isFinite(stock) || taxRate === null || taxRate > 100) {
+      return alert("商品名・価格・在庫数・消費税率（0〜100%）を正しく入力してください");
     }
 
     if (id) {
@@ -2585,12 +2740,7 @@
     alert(`${prod.name} の在庫を ${prod.stock} に更新しました。`);
   };
 
-  // 初期化モーダル操作
-  window.openResetActionsModal = () => {
-    if (isSelfCheckout) return;
-    document.getElementById("reset-actions-modal").classList.remove("hidden");
-  };
-
+  // 初期化タブ操作（モーダルを開かず管理画面内で完結）
   async function deleteAllSalesDocuments() {
     const snap = await getDocs(collection(db, "stores", storeId, "sales"));
     for (const d of snap.docs) {
@@ -2627,21 +2777,15 @@
     loadStoreSettingsToForm();
     renderAdminProducts();
     renderAdminInventory();
+    renderStaffTabUI();
     renderAdminDiscounts();
     renderAdminPayments();
     await renderAdminSales();
-    closeModal("reset-actions-modal");
     alert("店舗データを初期化しました。");
   };
 
-  // 担当者管理モーダル操作
-  window.openStaffAssignModal = () => {
-    if (isSelfCheckout) return;
-    renderStaffAssignModal();
-    document.getElementById("staff-assign-modal").classList.remove("hidden");
-  };
-
-  function renderStaffAssignModal() {
+  // 担当者タブ操作（モーダルを開かず管理画面内で完結）
+  function renderStaffTabUI() {
     const enabled = Boolean(storeData.staffTrackingEnabled);
     const chk = document.getElementById("staff-tracking-enabled");
     if (chk) chk.checked = enabled;
@@ -2650,6 +2794,7 @@
 
     const members = Array.isArray(storeData.staffMembers) ? storeData.staffMembers : [];
     const sel = document.getElementById("current-cashier-select");
+    if (!sel) return;
     sel.innerHTML = `<option value="">-- 担当者を選択 --</option>`;
     members.forEach(name => {
       const opt = document.createElement("option");
@@ -2660,6 +2805,7 @@
     });
 
     const ul = document.getElementById("staff-member-list");
+    if (!ul) return;
     ul.innerHTML = "";
     members.forEach((name, idx) => {
       const li = document.createElement("li");
@@ -2675,7 +2821,7 @@
   window.toggleStaffTrackingEnabled = async () => {
     storeData.staffTrackingEnabled = document.getElementById("staff-tracking-enabled").checked;
     await saveStoreData();
-    renderStaffAssignModal();
+    renderStaffTabUI();
     await renderAdminSales();
   };
 
@@ -2692,7 +2838,7 @@
     }
     input.value = "";
     await saveStoreData();
-    renderStaffAssignModal();
+    renderStaffTabUI();
   };
 
   window.removeStaffMember = async (idx) => {
@@ -2702,7 +2848,7 @@
       storeData.currentCashier = "";
     }
     await saveStoreData();
-    renderStaffAssignModal();
+    renderStaffTabUI();
   };
 
   window.applyCurrentCashier = async () => {
@@ -2833,7 +2979,7 @@
     let validTotal = 0;
 
     rows.forEach((s) => {
-      if (!s.refunded) validTotal += Number(s.grandTotal || 0);
+      if (!s.refunded) validTotal += Math.round(Number(s.grandTotal || 0));
       const originalIdx = loadedSales.findIndex(item => item.id === s.id);
       const tr = document.createElement("tr");
       const dateStr = new Date(s.createdAt).toLocaleString("ja-JP", {
@@ -2845,7 +2991,7 @@
 
       tr.innerHTML = `
         <td>${dateStr}</td>
-        <td>¥${Number(s.grandTotal || 0).toLocaleString()}</td>
+        <td>¥${Math.round(Number(s.grandTotal || 0)).toLocaleString()}</td>
         <td>${escapeHtml(s.paymentMethod)}</td>
         <td>${cashierDisplay}</td>
         <td style="color:${s.refunded ? 'var(--red)' : 'inherit'}; font-weight:bold;">${s.refunded ? "払戻/取消" : "完了"}</td>
@@ -2872,16 +3018,16 @@
         <tr>
           <td>${escapeHtml(i.name)}</td>
           <td>${rate}%</td>
-          <td>¥${Number(i.price || 0).toLocaleString()}</td>
-          <td>${Number(i.qty || 0)}</td>
-          <td>¥${(Number(i.price || 0) * Number(i.qty || 0)).toLocaleString()}</td>
+          <td>¥${Math.round(Number(i.price || 0)).toLocaleString()}</td>
+          <td>${Math.round(Number(i.qty || 0))}</td>
+          <td>¥${(Math.round(Number(i.price || 0)) * Math.round(Number(i.qty || 0))).toLocaleString()}</td>
         </tr>
       `;
     }).join("");
 
     const taxRows = Array.isArray(sale.taxBreakdown) && sale.taxBreakdown.length > 0
-      ? sale.taxBreakdown.map(t => `<div>税率 ${t.rate}%: 対象 ¥${Number(t.taxableAmount || 0).toLocaleString()} / 内税 ¥${Number(t.taxAmount || 0).toLocaleString()}</div>`).join("")
-      : `<div>内消費税: ¥${Number(sale.tax || 0).toLocaleString()}</div>`;
+      ? sale.taxBreakdown.map(t => `<div>税率 ${t.rate}%: 対象 ¥${Math.round(Number(t.taxableAmount || 0)).toLocaleString()} / 内税 ¥${Math.round(Number(t.taxAmount || 0)).toLocaleString()}</div>`).join("")
+      : `<div>内消費税: ¥${Math.round(Number(sale.tax || 0)).toLocaleString()}</div>`;
 
     const cashierLine = storeData.staffTrackingEnabled
       ? `<div><strong>レジ打ち担当者:</strong> ${escapeHtml(sale.cashier || "未設定")}</div>`
@@ -2901,10 +3047,10 @@
         <tbody>${itemsRows}</tbody>
       </table>
       <div style="border-top: 1px solid #ccc; padding-top: 8px;">
-        <div><strong>小計:</strong> ¥${Number(sale.subtotal || 0).toLocaleString()}</div>
-        <div><strong>割引額:</strong> -¥${Number(sale.totalDiscount || 0).toLocaleString()}</div>
+        <div><strong>小計:</strong> ¥${Math.round(Number(sale.subtotal || 0)).toLocaleString()}</div>
+        <div><strong>割引額:</strong> -¥${Math.round(Number(sale.totalDiscount || 0)).toLocaleString()}</div>
         ${taxRows}
-        <div style="font-size: 16px; font-weight: bold; margin-top: 4px;"><strong>合計:</strong> ¥${Number(sale.grandTotal || 0).toLocaleString()}</div>
+        <div style="font-size: 16px; font-weight: bold; margin-top: 4px;"><strong>合計:</strong> ¥${Math.round(Number(sale.grandTotal || 0)).toLocaleString()}</div>
       </div>
     `;
     document.getElementById("sale-detail-modal").classList.remove("hidden");
@@ -2936,8 +3082,8 @@
       sale.taxBreakdown.forEach(t => {
         const r = normalizeTaxRate(t.rate);
         const prev = map.get(r) || { rate: r, taxableAmount: 0, taxAmount: 0 };
-        prev.taxableAmount += Number(t.taxableAmount || 0);
-        prev.taxAmount += Number(t.taxAmount || 0);
+        prev.taxableAmount += Math.round(Number(t.taxableAmount || 0));
+        prev.taxAmount += Math.round(Number(t.taxAmount || 0));
         map.set(r, prev);
       });
       return map;
@@ -2945,8 +3091,8 @@
     const items = sale.items || [];
     items.forEach(i => {
       const r = normalizeTaxRate(i.taxRate);
-      const amt = Number(i.price || 0) * Number(i.qty || 0);
-      const taxAmt = r > 0 ? Math.floor(amt * r / (100 + r)) : 0;
+      const amt = Math.round(Number(i.price || 0)) * Math.round(Number(i.qty || 0));
+      const taxAmt = calcIncludedTaxInt(amt, taxRateTenths(r));
       const prev = map.get(r) || { rate: r, taxableAmount: 0, taxAmount: 0 };
       prev.taxableAmount += amt;
       prev.taxAmount += taxAmt;
@@ -2962,7 +3108,6 @@
 
     if (targetRows.length === 0) return alert("出力する売上データがありません");
 
-    // 全税率を収集
     const allRatesSet = new Set([0, 8, 10]);
     targetRows.forEach(s => {
       (s.items || []).forEach(i => allRatesSet.add(normalizeTaxRate(i.taxRate)));
@@ -2977,15 +3122,15 @@
         "日時": new Date(s.createdAt).toLocaleString("ja-JP"),
         "担当者": storeData.staffTrackingEnabled ? (s.cashier || "未設定") : "記録OFF",
         "商品明細": (s.items || []).map(i => `${i.name}(${normalizeTaxRate(i.taxRate)}%)×${i.qty}`).join(" / "),
-        "小計": s.subtotal,
-        "割引額": s.totalDiscount,
-        "合計金額": s.grandTotal,
-        "内消費税合計": s.tax
+        "小計": Math.round(Number(s.subtotal || 0)),
+        "割引額": Math.round(Number(s.totalDiscount || 0)),
+        "合計金額": Math.round(Number(s.grandTotal || 0)),
+        "内消費税合計": Math.round(Number(s.tax || 0))
       };
       sortedRates.forEach(r => {
         const entry = rateMap.get(r) || { taxableAmount: 0, taxAmount: 0 };
-        row[`税率${r}%対象額`] = Number(entry.taxableAmount || 0) * sign;
-        row[`税率${r}%内消費税`] = Number(entry.taxAmount || 0) * sign;
+        row[`税率${r}%対象額`] = Math.round(Number(entry.taxableAmount || 0)) * sign;
+        row[`税率${r}%内消費税`] = Math.round(Number(entry.taxAmount || 0)) * sign;
       });
       row["支払方法"] = s.paymentMethod;
       row["状態"] = s.refunded ? "払戻/取消" : "完了";
@@ -3008,17 +3153,17 @@
 
       if (!s.refunded) {
         validSalesCount += 1;
-        totalDiscountSum += Number(s.totalDiscount || 0);
-        totalTaxSum += Number(s.tax || 0);
-        grandTotalSum += Number(s.grandTotal || 0);
+        totalDiscountSum += Math.round(Number(s.totalDiscount || 0));
+        totalTaxSum += Math.round(Number(s.tax || 0));
+        grandTotalSum += Math.round(Number(s.grandTotal || 0));
         const pm = s.paymentMethod || "不明";
-        paymentTotals[pm] = (paymentTotals[pm] || 0) + Number(s.grandTotal || 0);
+        paymentTotals[pm] = (paymentTotals[pm] || 0) + Math.round(Number(s.grandTotal || 0));
 
         sortedRates.forEach(r => {
           const entry = rateMap.get(r) || { taxableAmount: 0, taxAmount: 0 };
           const sumEntry = rateSummaryMap.get(r);
-          sumEntry.validTaxable += Number(entry.taxableAmount || 0);
-          sumEntry.validTax += Number(entry.taxAmount || 0);
+          sumEntry.validTaxable += Math.round(Number(entry.taxableAmount || 0));
+          sumEntry.validTax += Math.round(Number(entry.taxAmount || 0));
         });
       }
 
@@ -3039,8 +3184,8 @@
           });
         }
         const entry = hourlyMap.get(key);
-        entry["販売数量"] += Number(item.qty || 0) * sign;
-        entry["商品売上金額(税込)"] += Number(item.price || 0) * Number(item.qty || 0) * sign;
+        entry["販売数量"] += Math.round(Number(item.qty || 0)) * sign;
+        entry["商品売上金額(税込)"] += Math.round(Number(item.price || 0)) * Math.round(Number(item.qty || 0)) * sign;
       });
     });
 
@@ -3086,7 +3231,7 @@
   window.refundSale = async (idx) => {
     const sale = loadedSales[idx];
     if (!sale) return;
-    if (!confirm(`¥${Math.abs(Number(sale.grandTotal || 0)).toLocaleString()} の会計を払い戻し処理しますか？\n（商品の在庫も元に戻り、払い戻し伝票を印刷します）`)) return;
+    if (!confirm(`¥${Math.abs(Math.round(Number(sale.grandTotal || 0))).toLocaleString()} の会計を払い戻し処理しますか？\n（商品の在庫も元に戻ります）`)) return;
 
     const saleRef = doc(db, "stores", storeId, "sales", sale.id);
     await updateDoc(saleRef, { refunded: true });
@@ -3099,14 +3244,16 @@
       await saveStoreData();
     }
 
-    printRefundSlip({
+    lastCompletedRefund = {
       ...sale,
       cashier: storeData.staffTrackingEnabled ? (sale.cashier || getActiveCashierName()) : "記録OFF",
       createdAt: new Date().toISOString()
-    });
+    };
 
     await renderAdminSales();
-    alert("払い戻し処理と伝票印刷が完了しました。");
+    document.getElementById("refund-complete-summary").textContent =
+      `払戻合計: -¥${Math.abs(Math.round(Number(sale.grandTotal || 0))).toLocaleString()}`;
+    document.getElementById("refund-complete-modal").classList.remove("hidden");
   };
 
   function loadStoreSettingsToForm() {
