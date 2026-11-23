@@ -222,6 +222,15 @@
     font-size: 16px;
   }
 
+  button:disabled {
+    background: var(--gray);
+    color: var(--dark-gray);
+    border-color: var(--dark-gray);
+    cursor: not-allowed;
+    opacity: 0.6;
+    pointer-events: none;
+  }
+
   /* 会計モーダルをスクロールなしで収めるための省スペース調整 */
   #checkout-modal .modal-content {
     padding: 14px 18px;
@@ -499,7 +508,7 @@
         <span style="font-weight: bold;">お買上げ明細</span>
         <div style="display: flex; gap: 4px; flex-wrap: wrap;">
           <button type="button" style="padding: 4px 8px; font-size: 12px;" onclick="createMobileOrderFromPos()">番号発行・印刷</button>
-          <button type="button" style="padding: 4px 8px; font-size: 12px;" onclick="saveLoadedMobileOrders()">番号編集保存</button>
+          <button type="button" id="btn-save-mobile-order" disabled style="padding: 4px 8px; font-size: 12px;" onclick="saveLoadedMobileOrders()">番号編集保存</button>
           <button type="button" class="danger" style="padding: 4px 10px; font-size: 14px;" onclick="clearCart()">リセット</button>
         </div>
       </div>
@@ -577,7 +586,6 @@
 
 <!-- 4. 店員呼び出しロック画面（差し替え） -->
 <div id="staff-call-overlay" class="hidden" onclick="handleOverlayTap(event)">
-  <h1>店員を呼び出しています</h1>
   <p style="font-size: 18px; margin-bottom: 24px;">スタッフが参りますので、そのまま少々お待ちください。</p>
 
   <!-- 客側がいつでもセルフレジへ戻れるボタン -->
@@ -585,8 +593,15 @@
     呼び出しを取り消してセルフレジに戻る
   </button>
 
-  <!-- タップされるまで非表示のパスワード入力ボックス -->
-  <div id="staff-pass-box" class="hidden" onclick="event.stopPropagation()" style="border: 2px solid var(--border); padding: 20px; border-radius: 8px; max-width: 340px; width: 100%; margin-top: 16px; background: var(--bg);">
+  <p style="font-size: 13px; color: var(--dark-gray);">
+    ※店員用メニュー・解除は画面のどこか（または下のボタン）をタップしてパスワードを入力してください
+  </p>
+  <button style="margin-top: 10px; font-size: 14px;" onclick="event.stopPropagation(); showStaffPassBox()">
+    店員パスワード入力を開く
+  </button>
+
+  <!-- タップされるまで非表示のパスワード入力ボックス（中央配置） -->
+  <div id="staff-pass-box" class="hidden" onclick="event.stopPropagation()" style="border: 2px solid var(--border); padding: 20px; border-radius: 8px; max-width: 340px; width: 100%; margin: 16px auto 0; background: var(--bg);">
     <p style="font-weight: bold; margin-bottom: 10px;">【店員用】解除パスワード入力</p>
     <input type="password" id="staff-unlock-pass" readonly onclick="openNumpadForInput('staff-unlock-pass', '解除パスワード')" placeholder="タップしてテンキー入力" style="margin-bottom: 10px; text-align: center; font-size: 20px;">
     <div style="display: flex; gap: 8px;">
@@ -1000,6 +1015,7 @@ const firebaseConfig = {
   let filteredSales = [];
   let numpadTargetInputId = null;
   let numpadCurrentValue = "";
+  let numpadCartIndex = null;
 
   // レジ作業用ステート
   let cart = []; // { productId, name, price, qty, discount: { value, type } | null }
@@ -1134,6 +1150,7 @@ const firebaseConfig = {
     globalDiscount = null;
     loadedOrderDocIds = [];
     renderCart();
+    updateMobileOrderSaveButtonState();
     console.log("[clearCart] after:", { cart });
   };
 
@@ -1219,7 +1236,7 @@ const firebaseConfig = {
         <div class="cart-item-actions">
           ${discBtnHtml}
           <button onclick="changeQty(${idx}, -1)">-</button>
-          <span style="min-width: 20px; text-align:center; font-weight:bold;">${item.qty}</span>
+          <span style="min-width: 28px; text-align:center; font-weight:bold; text-decoration: underline; cursor: pointer; padding: 2px 4px;" onclick="openCartQtyNumpad(${idx})">${item.qty}</span>
           <button onclick="changeQty(${idx}, 1)">+</button>
         </div>
       `;
@@ -2349,6 +2366,7 @@ const firebaseConfig = {
     console.log("[deleteOrderById] docId:", docId, "orderCode:", orderCode);
     await deleteDoc(doc(db, "stores", storeId, "orders", docId));
     loadedOrderDocIds = loadedOrderDocIds.filter(id => id !== docId);
+    updateMobileOrderSaveButtonState();
     await openOrderLookupModal();
   };
 
@@ -2391,6 +2409,7 @@ const firebaseConfig = {
 
     renderCart();
     closeModal("order-lookup-modal");
+    updateMobileOrderSaveButtonState();
   }
 
   (() => {
@@ -2446,10 +2465,10 @@ const firebaseConfig = {
     });
     loadedOrderDocIds.push(docRef.id);
     printMobileOrderSlip(orderCode, itemsCopy);
+    clearCart();
     alert(`新規モバイル注文番号「${orderCode}」を発行しました。`);
   };
 
-  // 読み込み済みのモバイル注文の最新カート内容でFirestoreを更新保存
   window.saveLoadedMobileOrders = async () => {
     console.log("[saveLoadedMobileOrders] loadedOrderDocIds:", loadedOrderDocIds, "cart:", cart);
     if (loadedOrderDocIds.length === 0) return alert("編集対象のモバイル注文が読み込まれていません");
@@ -2465,6 +2484,8 @@ const firebaseConfig = {
         updatedAt: new Date().toISOString()
       });
     }
+    clearCart();
+    updateMobileOrderSaveButtonState();
     alert("モバイル注文の編集内容を保存しました。");
   };
 
@@ -2483,6 +2504,53 @@ const firebaseConfig = {
     `;
     window.print();
   }
+
+  function updateMobileOrderSaveButtonState() {
+    const btn = document.getElementById("btn-save-mobile-order");
+    if (!btn) return;
+    btn.disabled = !(Array.isArray(loadedOrderDocIds) && loadedOrderDocIds.length > 0);
+  }
+
+  window.openCartQtyNumpad = (index) => {
+    const item = cart[index];
+    if (!item) return;
+    numpadCartIndex = index;
+    numpadTargetInputId = null;
+    numpadCurrentValue = String(item.qty);
+    document.getElementById("numpad-modal-title").textContent = `${item.name} の個数入力`;
+    document.getElementById("numpad-display").value = numpadCurrentValue;
+    document.getElementById("numpad-modal").classList.remove("hidden");
+  };
+
+  window.confirmGenericNumpad = () => {
+    if (numpadCartIndex !== null) {
+      const idx = numpadCartIndex;
+      numpadCartIndex = null;
+      const nextQty = Number(numpadCurrentValue);
+      const item = cart[idx];
+      if (!item) {
+        closeModal("numpad-modal");
+        return;
+      }
+      if (!Number.isFinite(nextQty) || nextQty <= 0) {
+        cart.splice(idx, 1);
+      } else {
+        const prod = storeData.products.find(p => p.id === item.productId);
+        if (!isRefundMode && storeData.stockEnabled && prod && nextQty > prod.stock) {
+          return alert("在庫数を超えています");
+        }
+        item.qty = Math.floor(nextQty);
+      }
+      renderCart();
+      closeModal("numpad-modal");
+      return;
+    }
+
+    if (numpadTargetInputId) {
+      document.getElementById(numpadTargetInputId).value = numpadCurrentValue;
+    }
+    closeModal("numpad-modal");
+  };
 
   // =========================================================================
   // ユーティリティ
