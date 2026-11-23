@@ -425,6 +425,24 @@
       min-height: 40vh;
     }
   }
+
+  #customer-order-screen #main-pos.list-top {
+    flex-direction: column-reverse;
+  }
+  #customer-order-screen #main-pos.list-bottom {
+    flex-direction: column;
+  }
+  #customer-order-screen #main-pos.list-top .product-area,
+  #customer-order-screen #main-pos.list-bottom .product-area {
+    flex: none;
+    border-right: none;
+    max-height: 55vh;
+  }
+  #customer-order-screen #main-pos.list-top .cart-area,
+  #customer-order-screen #main-pos.list-bottom .cart-area {
+    flex: none;
+    min-height: 40vh;
+  }
 </style>
 </head>
 <body>
@@ -478,8 +496,12 @@
     <!-- 右：カート・会計 -->
     <div class="cart-area">
       <div class="cart-header">
-        <span style="font-weight: bold; font-size: 18px;">お買上げ明細</span>
-        <button class="danger" style="padding: 6px 12px; font-size: 14px;" onclick="clearCart()">リセット</button>
+        <span style="font-weight: bold;">リスト</span>
+        <div style="display: flex; gap: 4px;">
+          <button style="padding: 4px 8px; font-size: 12px;" onclick="moveCustCart('up')">上へ</button>
+          <button style="padding: 4px 8px; font-size: 12px;" onclick="moveCustCart('down')">下へ</button>
+          <button class="danger" style="padding: 4px 10px; font-size: 14px;" onclick="clearCustCart()">クリア</button>
+        </div>
       </div>
       <div class="cart-list" id="cart-list"></div>
       <div class="discount-badges" id="auto-discount-info"></div>
@@ -531,6 +553,13 @@
   </div>
   <button class="primary" style="width: 100%; max-width: 400px; padding: 14px; margin-top: 12px;" onclick="startNewCustomerOrder()">新しい注文を始める</button>
 </div>
+</div>
+
+<!-- 会計完了画面（お客様側） -->
+<div id="customer-checkout-done-view" class="hidden" style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 24px; text-align: center;">
+  <h2 style="font-size: 28px; margin-bottom: 12px;">会計が完了しました</h2>
+  <p style="font-size: 16px; color: var(--dark-gray); margin-bottom: 24px;">ご利用ありがとうございました。</p>
+  <button class="primary" style="padding: 14px 28px; font-size: 16px;" onclick="startNewCustomerOrder()">新しい注文を始める</button>
 </div>
 
 <!-- 4. 店員呼び出しロック画面（差し替え） -->
@@ -865,7 +894,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-  import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, getDocs, query, orderBy, where, serverTimestamp, increment } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, addDoc, getDocs, query, orderBy, where, serverTimestamp, increment } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   // =========================================================================
   // ★★★ 1. Firebase設定（ここをあなたのFirebaseプロジェクトの値に書き換えてください） ★★★
@@ -1088,6 +1117,7 @@ const firebaseConfig = {
 
   window.clearCart = () => {
     cart = [];
+    loadedOrderDocIds = [];
     globalDiscount = null;
     currentOrderDocId = null;
     const addrEl = document.getElementById("receipt-addressee");
@@ -1394,9 +1424,9 @@ const firebaseConfig = {
     saleRecord.id = docRef.id;
 
     // 3. 予約注文からの会計なら予約ステータスを完了に更新
-    if (currentOrderDocId) {
-      const orderRef = doc(db, "stores", storeId, "orders", currentOrderDocId);
-      await updateDoc(orderRef, { status: "completed" });
+    for (const orderId of loadedOrderDocIds) {
+      const orderRef = doc(db, "stores", storeId, "orders", orderId);
+      await updateDoc(orderRef, { status: "completed", completedAt: new Date().toISOString() });
     }
 
     closeModal("checkout-modal");
@@ -1570,21 +1600,30 @@ const firebaseConfig = {
   let submittedOrderDocId = null;
   let submittedOrderCode = null;
   let submittedOrderItems = [];
+  let unsubscribeOrderStatus = null;
+
+  window.moveCustCart = (dir) => {
+    const mainPos = document.querySelector("#customer-order-screen #main-pos");
+    mainPos.classList.remove("list-top", "list-bottom");
+    mainPos.classList.add(dir === "up" ? "list-top" : "list-bottom");
+  };
 
   window.submitCustomerOrder = async () => {
+    console.log("[submitCustomerOrder] submittedOrderDocId:", submittedOrderDocId, "custCart:", custCart);
     if (custCart.length === 0) return alert("商品を選んでください");
     const ordersCol = collection(db, "stores", storeId, "orders");
 
     if (submittedOrderDocId) {
       await updateDoc(doc(db, "stores", storeId, "orders", submittedOrderDocId), {
-        items: custCart,
+        items: JSON.parse(JSON.stringify(custCart)),
+        status: "pending",
         updatedAt: new Date().toISOString()
       });
     } else {
       submittedOrderCode = String(Math.floor(1000 + Math.random() * 9000));
       const orderDocRef = await addDoc(ordersCol, {
         orderCode: submittedOrderCode,
-        items: custCart,
+        items: JSON.parse(JSON.stringify(custCart)),
         status: "pending",
         createdAt: new Date().toISOString()
       });
@@ -1595,9 +1634,30 @@ const firebaseConfig = {
     custCart = [];
     renderCustCart();
     showCustomerOrderCompleteView();
+    watchSubmittedOrderStatus();
   };
 
+  function watchSubmittedOrderStatus() {
+    if (unsubscribeOrderStatus) {
+      unsubscribeOrderStatus();
+      unsubscribeOrderStatus = null;
+    }
+    if (!submittedOrderDocId) return;
+
+    unsubscribeOrderStatus = onSnapshot(doc(db, "stores", storeId, "orders", submittedOrderDocId), (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      console.log("[watchSubmittedOrderStatus] status:", data.status);
+      if (data.status === "completed") {
+        document.getElementById("customer-order-complete-view").classList.add("hidden");
+        document.querySelector("#customer-order-screen #main-pos").classList.add("hidden");
+        document.getElementById("customer-checkout-done-view").classList.remove("hidden");
+      }
+    });
+  }
+
   function showCustomerOrderCompleteView() {
+    document.getElementById("customer-checkout-done-view").classList.add("hidden");
     document.querySelector("#customer-order-screen #main-pos").classList.add("hidden");
     document.getElementById("customer-order-complete-view").classList.remove("hidden");
     document.getElementById("completed-order-code-display").textContent = submittedOrderCode;
@@ -1607,26 +1667,44 @@ const firebaseConfig = {
   }
 
   window.editSubmittedCustomerOrder = () => {
+    console.log("[editSubmittedCustomerOrder] items:", submittedOrderItems);
     custCart = JSON.parse(JSON.stringify(submittedOrderItems));
     renderCustCart();
     document.getElementById("customer-order-complete-view").classList.add("hidden");
+    document.getElementById("customer-checkout-done-view").classList.add("hidden");
     document.querySelector("#customer-order-screen #main-pos").classList.remove("hidden");
   };
 
   window.deleteSubmittedCustomerOrder = async () => {
-    if (!submittedOrderDocId) return;
+    console.log("[deleteSubmittedCustomerOrder] submittedOrderDocId:", submittedOrderDocId);
+    if (!submittedOrderDocId) return alert("削除対象の注文が見つかりません");
+    if (unsubscribeOrderStatus) {
+      unsubscribeOrderStatus();
+      unsubscribeOrderStatus = null;
+    }
     await deleteDoc(doc(db, "stores", storeId, "orders", submittedOrderDocId));
     submittedOrderDocId = null;
     submittedOrderCode = null;
     submittedOrderItems = [];
-    startNewCustomerOrder();
+    custCart = [];
+    renderCustCart();
+    document.getElementById("customer-order-complete-view").classList.add("hidden");
+    document.getElementById("customer-checkout-done-view").classList.add("hidden");
+    document.querySelector("#customer-order-screen #main-pos").classList.remove("hidden");
   };
 
   window.startNewCustomerOrder = () => {
+    if (unsubscribeOrderStatus) {
+      unsubscribeOrderStatus();
+      unsubscribeOrderStatus = null;
+    }
     submittedOrderDocId = null;
     submittedOrderCode = null;
     submittedOrderItems = [];
+    custCart = [];
+    renderCustCart();
     document.getElementById("customer-order-complete-view").classList.add("hidden");
+    document.getElementById("customer-checkout-done-view").classList.add("hidden");
     document.querySelector("#customer-order-screen #main-pos").classList.remove("hidden");
   };
 
@@ -1654,35 +1732,6 @@ const firebaseConfig = {
       }
     }
   };
-
-  window.fetchOrderByCode = async () => {
-    const code = document.getElementById("lookup-order-code").value.trim();
-    if (!code) return alert("番号を入力してください");
-    const q = query(
-      collection(db, "stores", storeId, "orders"),
-      where("orderCode", "==", code),
-      where("status", "==", "pending")
-    );
-    const snap = await getDocs(q);
-    if (snap.empty) return alert("該当する未会計の注文番号が見つかりません");
-    const docSnap = snap.docs[0];
-    loadOrderIntoCart(docSnap.id, docSnap.data());
-  };
-
-  function loadOrderIntoCart(docId, orderData) {
-    currentOrderDocId = docId;
-    cart = orderData.items.map(i => ({
-      productId: i.productId,
-      name: i.name,
-      price: i.price,
-      qty: i.qty,
-      discount: null
-    }));
-    globalDiscount = null;
-    renderCart();
-    closeModal("order-lookup-modal");
-    alert(`注文番号「${orderData.orderCode}」の商品をカートに読み込みました。商品の追加や削除も可能です。`);
-  }
 
   // =========================================================================
   // 裏メニュー（管理画面）ロジック
@@ -1942,6 +1991,7 @@ const firebaseConfig = {
     document.getElementById("set-invoice-no").value = storeData.invoiceNo || "";
     document.getElementById("set-receipt-footer").value = storeData.receiptFooter || "";
     document.getElementById("set-staff-pass").value = storeData.staffPass || "1234";
+    document.getElementById("set-stock-enabled").checked = storeData.stockEnabled !== false;
   }
 
   window.saveStoreSettings = async () => {
@@ -1951,6 +2001,7 @@ const firebaseConfig = {
     storeData.invoiceNo = document.getElementById("set-invoice-no").value.trim();
     storeData.receiptFooter = document.getElementById("set-receipt-footer").value.trim();
     storeData.staffPass = document.getElementById("set-staff-pass").value.trim() || "1234";
+    storeData.stockEnabled = document.getElementById("set-stock-enabled").checked;
     await saveStoreData();
     alert("店舗設定を保存しました。");
   };
@@ -2048,9 +2099,6 @@ const firebaseConfig = {
     alert("選択した商品の払い戻しが完了しました。");
     clearCart();
   };
-
-  // メインボタンの振り分け（openCheckoutModal の先頭または呼び出し側で判定）
-  const originalOpenCheckoutModal = window.openCheckoutModal;
 
   window.openNumpadForInput = (inputId, title) => {
     numpadTargetInputId = inputId;
@@ -2268,6 +2316,88 @@ const firebaseConfig = {
     closeModal("checkout-complete-modal");
     clearCart();
   };
+
+  let loadedOrderDocIds = [];
+
+  window.openOrderLookupModal = async () => {
+    document.getElementById("lookup-order-code").value = "";
+    document.getElementById("order-lookup-modal").classList.remove("hidden");
+
+    const listDiv = document.getElementById("recent-orders-list");
+    listDiv.innerHTML = "";
+    const q = query(collection(db, "stores", storeId, "orders"), where("status", "==", "pending"));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      listDiv.innerHTML = "<p style='font-weight:bold; margin-bottom:6px;'>未会計の注文一覧:</p>";
+      snap.forEach(d => {
+        const data = d.data();
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex; gap:6px; align-items:center; margin:6px 0;";
+
+        const addBtn = document.createElement("button");
+        addBtn.style.flex = "1";
+        addBtn.textContent = `番号: ${data.orderCode} (${data.items.length}点) を追加`;
+        addBtn.onclick = () => loadOrderIntoCart(d.id, data);
+
+        const delBtn = document.createElement("button");
+        delBtn.className = "danger";
+        delBtn.textContent = "削除";
+        delBtn.onclick = () => deleteOrderById(d.id, data.orderCode);
+
+        row.appendChild(addBtn);
+        row.appendChild(delBtn);
+        listDiv.appendChild(row);
+      });
+    }
+  };
+
+  window.deleteOrderById = async (docId, orderCode) => {
+    console.log("[deleteOrderById] docId:", docId, "orderCode:", orderCode);
+    await deleteDoc(doc(db, "stores", storeId, "orders", docId));
+    loadedOrderDocIds = loadedOrderDocIds.filter(id => id !== docId);
+    await openOrderLookupModal();
+  };
+
+  window.fetchOrderByCode = async () => {
+    const code = document.getElementById("lookup-order-code").value.trim();
+    console.log("[fetchOrderByCode] code:", code);
+    if (!code) return alert("番号を入力してください");
+    const q = query(
+      collection(db, "stores", storeId, "orders"),
+      where("orderCode", "==", code),
+      where("status", "==", "pending")
+    );
+    const snap = await getDocs(q);
+    if (snap.empty) return alert("該当する未会計の注文番号が見つかりません");
+    const docSnap = snap.docs[0];
+    loadOrderIntoCart(docSnap.id, docSnap.data());
+  };
+
+  function loadOrderIntoCart(docId, orderData) {
+    console.log("[loadOrderIntoCart] docId:", docId, "loadedOrderDocIds:", loadedOrderDocIds);
+    if (loadedOrderDocIds.includes(docId)) {
+      return alert(`注文番号「${orderData.orderCode}」はすでにカートに追加されています。`);
+    }
+    loadedOrderDocIds.push(docId);
+
+    orderData.items.forEach(i => {
+      const existing = cart.find(c => c.productId === i.productId && !c.discount);
+      if (existing) {
+        existing.qty += i.qty;
+      } else {
+        cart.push({
+          productId: i.productId,
+          name: i.name,
+          price: i.price,
+          qty: i.qty,
+          discount: null
+        });
+      }
+    });
+
+    renderCart();
+    closeModal("order-lookup-modal");
+  }
 
   // =========================================================================
   // ユーティリティ
