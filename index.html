@@ -655,12 +655,8 @@
       <h2>お会計</h2>
       <button type="button" onclick="closeModal('checkout-modal')">閉じる</button>
     </div>
-    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap;">
+    <div style="margin-bottom: 6px;">
       <p style="font-weight: bold;">支払い方法を選択</p>
-      <div id="self-payment-select-wrap" class="hidden" style="display: flex; align-items: center; gap: 6px;">
-        <label for="self-payment-select" style="font-size: 13px; font-weight: bold;">支払方法切替:</label>
-        <select id="self-payment-select" style="width: auto; padding: 4px 8px; font-size: 14px;" onchange="selectPaymentMethod(this.value)"></select>
-      </div>
     </div>
     <div class="payment-methods" id="payment-method-buttons"></div>
 
@@ -1012,18 +1008,17 @@
         <button type="button" id="admin-test-mode-btn" onclick="toggleTestMode()">テストモード: OFF</button>
       </div>
       <div style="border-top: 1px solid #ccc; padding-top: 12px; font-size: 13px; color: var(--dark-gray); line-height: 1.6;">
-        <div><strong>※セルフレジボタンについて:</strong> 「店舗・レシート設定」でセルフレジ解除用パスワードが未入力の場合、セルフレジボタンは灰色になり押せません。</div>
-        <div><strong>※効果音URL設定:</strong> コード内の <code>SOUND_URLS</code> に音源URLを設定すると再生されます。</div>
+        <div><strong>※セルフレジボタンについて:</strong> 「店舗・レシート設定」でセルフレジ解除用パスワードを設定してください。</div>
       </div>
     </div>
 
     <!-- タブ9：初期化（商品削除・販売履歴削除・初期化） -->
-    <div id="tab-reset" class="admin-section">
+    <div id="tab-reset" class="admin-section" style="text-align: center;">
       <h3>データ初期化</h3>
       <p style="font-size: 13px; color: var(--dark-gray); margin-bottom: 14px;">
         実行する初期化操作を選択してください（元に戻せない操作があります）。
       </p>
-      <div style="display: flex; flex-direction: column; gap: 10px; max-width: 420px;">
+      <div style="display: flex; flex-direction: column; gap: 10px; max-width: 420px; margin: 0 auto;">
         <button type="button" class="danger" style="padding: 14px;" onclick="deleteAllProductsData()">商品削除（全商品削除）</button>
         <button type="button" class="danger" style="padding: 14px;" onclick="deleteAllSalesData()">販売履歴削除（全履歴削除）</button>
         <button type="button" class="danger solid" style="padding: 14px;" onclick="resetAllStoreData()">初期化（店舗・商品・履歴リセット）</button>
@@ -1092,8 +1087,8 @@
   // 2. 効果音設定（GitHub等にアップロードした音声ファイルURLを指定可能）
   // =========================================================================
   const SOUND_URLS = {
-    buttonClick: "",
-    checkoutDone: ""
+    buttonClick: "https://github.com/rikuto-ja/-/blob/main/beep1.mp3",
+    checkoutDone: "https://github.com/rikuto-ja/-/blob/main/beep2.mp3"
   };
 
   const audioClick = SOUND_URLS.buttonClick ? new Audio(SOUND_URLS.buttonClick) : null;
@@ -1896,25 +1891,8 @@
 
   function renderPaymentMethods() {
     const container = document.getElementById("payment-method-buttons");
-    const selectWrap = document.getElementById("self-payment-select-wrap");
-    const selEl = document.getElementById("self-payment-select");
     container.innerHTML = "";
     const methods = ["現金", ...storeData.paymentMethods];
-
-    if (selEl) {
-      selEl.innerHTML = "";
-      methods.forEach(m => {
-        const opt = document.createElement("option");
-        opt.value = m;
-        opt.textContent = m;
-        if (m === selectedPayment) opt.selected = true;
-        selEl.appendChild(opt);
-      });
-    }
-
-    if (selectWrap) {
-      selectWrap.classList.toggle("hidden", !isSelfCheckout);
-    }
 
     methods.forEach(m => {
       const btn = document.createElement("button");
