@@ -353,6 +353,14 @@
   th, td { border: 1px solid var(--border); padding: 8px; text-align: left; font-size: 14px; }
   th { background: var(--gray); }
 
+  body.stock-off .p-stock {
+    display: none;
+  }
+  body.stock-off .product-btn.out-of-stock {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
   /* 店員呼び出しオーバーレイ（セルフレジ用） */
   #staff-call-overlay {
     position: fixed;
@@ -774,6 +782,7 @@
       <button onclick="switchAdminTab('tab-payments', this)">支払い方法設定</button>
       <button onclick="switchAdminTab('tab-sales', this)">売上履歴・再発行・払戻</button>
       <button onclick="switchAdminTab('tab-store', this)">店舗・レシート設定</button>
+      <button onclick="switchAdminTab('tab-inventory', this)">在庫管理</button>
     </div>
 
     <!-- タブ1：商品・在庫管理 -->
@@ -878,6 +887,25 @@
         <button class="primary" style="padding: 14px;" onclick="saveStoreSettings()">設定を保存する</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- タブ6：在庫管理 -->
+<div id="tab-inventory" class="admin-section">
+  <div style="margin-bottom: 14px;">
+    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: bold;">
+      <input type="checkbox" id="inv-stock-enabled" style="width: auto; transform: scale(1.3);" onchange="toggleInventoryEnabledFromTab()">
+      <span>在庫管理を有効にする（OFF時はレジ画面の在庫表示・制限を非表示）</span>
+    </label>
+  </div>
+  <div id="inventory-list-area">
+    <p style="font-size: 13px; color: var(--dark-gray); margin-bottom: 8px;">※在庫数が少ない商品が上に表示されます。数値を入力して「更新」を押してください。</p>
+    <table>
+      <thead>
+        <tr><th>商品名</th><th>カテゴリ</th><th>現在の在庫</th><th>新しい在庫数</th><th>操作</th></tr>
+      </thead>
+      <tbody id="admin-inventory-list"></tbody>
+    </table>
   </div>
 </div>
 
@@ -1000,7 +1028,7 @@ const firebaseConfig = {
     invoiceNo: "T1234567890123",
     receiptFooter: "毎度ありがとうございます。",
     staffPass: "1234",
-    stockEnabled: true, // 在庫管理のON/OFF
+    stockEnabled: false, // デフォルトOFF
     products: [],
     paymentMethods: ["クレジットカード", "PayPay", "交通系IC"],
     presetDiscounts: [
@@ -1099,6 +1127,7 @@ const firebaseConfig = {
   }
 
   function updateHeaderAndUI() {
+    applyStockVisibilityState();
     document.getElementById("header-store-name").textContent = storeData.name;
     renderCategories();
     renderProducts();
@@ -1131,7 +1160,7 @@ const firebaseConfig = {
     filtered.forEach(p => {
       const btn = document.createElement("button");
       btn.className = "product-btn";
-      if (p.stock <= 0) btn.classList.add("out-of-stock");
+      if (storeData.stockEnabled && p.stock <= 0) btn.classList.add("out-of-stock");
       btn.innerHTML = `
         <div class="p-name">${escapeHtml(p.name)}</div>
         <div class="p-bottom">
@@ -1545,6 +1574,7 @@ const firebaseConfig = {
     const snap = await getDoc(docRef);
     if (!snap.exists()) return alert("店舗データが見つかりません");
     storeData = { ...storeData, ...snap.data() };
+    applyStockVisibilityState();
     document.getElementById("cust-store-name").textContent = `${storeData.name} 事前注文`;
     renderCustCategories();
     renderCustProducts();
@@ -1573,7 +1603,7 @@ const firebaseConfig = {
     filtered.forEach(p => {
       const btn = document.createElement("button");
       btn.className = "product-btn";
-      if (p.stock <= 0) btn.classList.add("out-of-stock");
+      if (storeData.stockEnabled && p.stock <= 0) btn.classList.add("out-of-stock");
       btn.innerHTML = `
         <div class="p-name">${escapeHtml(p.name)}</div>
         <div class="p-bottom">
@@ -1750,11 +1780,56 @@ const firebaseConfig = {
   window.openAdminModal = async () => {
     if (isSelfCheckout) return;
     renderAdminProducts();
+    renderAdminInventory();
     renderAdminDiscounts();
     renderAdminPayments();
     await renderAdminSales();
     loadStoreSettingsToForm();
     document.getElementById("admin-modal").classList.remove("hidden");
+  };
+
+  window.toggleInventoryEnabledFromTab = async () => {
+    storeData.stockEnabled = document.getElementById("inv-stock-enabled").checked;
+    await saveStoreData();
+    applyStockVisibilityState();
+    renderAdminInventory();
+  };
+
+  function renderAdminInventory() {
+    applyStockVisibilityState();
+    const tbody = document.getElementById("admin-inventory-list");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+    if (!storeData.stockEnabled) return;
+
+    const sortedProducts = [...storeData.products].sort((a, b) => Number(a.stock || 0) - Number(b.stock || 0));
+    sortedProducts.forEach((p) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(p.name)}</td>
+        <td>${escapeHtml(p.category || "")}</td>
+        <td style="font-weight:bold;">${p.stock}</td>
+        <td><input type="number" id="inv-input-${p.id}" value="${Number(p.stock || 0)}" min="0" style="width: 100px;"></td>
+        <td><button class="primary" style="padding:4px 10px; font-size:12px;" onclick="updateProductStockFromInventory('${p.id}')">更新</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  window.updateProductStockFromInventory = async (productId) => {
+    console.log("[updateProductStockFromInventory] productId:", productId);
+    const inputEl = document.getElementById(`inv-input-${productId}`);
+    if (!inputEl) return;
+    const nextStock = Number(inputEl.value);
+    if (!Number.isFinite(nextStock) || nextStock < 0) return alert("0以上の数値を入力してください");
+
+    const prod = storeData.products.find(p => p.id === productId);
+    if (!prod) return;
+    prod.stock = Math.floor(nextStock);
+
+    await saveStoreData();
+    renderAdminInventory();
+    alert(`${prod.name} の在庫を ${prod.stock} に更新しました。`);
   };
 
   window.switchAdminTab = (tabId, btnEl) => {
@@ -2002,7 +2077,7 @@ const firebaseConfig = {
     document.getElementById("set-invoice-no").value = storeData.invoiceNo || "";
     document.getElementById("set-receipt-footer").value = storeData.receiptFooter || "";
     document.getElementById("set-staff-pass").value = storeData.staffPass || "1234";
-    document.getElementById("set-stock-enabled").checked = storeData.stockEnabled !== false;
+    document.getElementById("set-stock-enabled").checked = Boolean(storeData.stockEnabled);
   }
 
   window.saveStoreSettings = async () => {
@@ -2551,6 +2626,15 @@ const firebaseConfig = {
     }
     closeModal("numpad-modal");
   };
+
+  function applyStockVisibilityState() {
+    const enabled = Boolean(storeData.stockEnabled);
+    document.body.classList.toggle("stock-off", !enabled);
+    const invChk = document.getElementById("inv-stock-enabled");
+    if (invChk) invChk.checked = enabled;
+    const invArea = document.getElementById("inventory-list-area");
+    if (invArea) invArea.classList.toggle("hidden", !enabled);
+  }
 
   // =========================================================================
   // ユーティリティ
