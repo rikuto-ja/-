@@ -870,12 +870,6 @@
 
     <!-- タブ5：店舗・レシート設定 -->
     <div id="tab-store" class="admin-section">
-        <div>
-  <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-    <input type="checkbox" id="set-stock-enabled" style="width: auto; transform: scale(1.3);">
-    <span>在庫管理を有効にする（OFFにすると在庫数制限・在庫減算を行いません）</span>
-  </label>
-</div>
       <h3>レシート・領収書印字情報＆ロック設定</h3>
       <div style="display: grid; gap: 10px; margin-top: 10px;">
         <div><label>店舗名</label><input type="text" id="set-store-name"></div>
@@ -888,9 +882,8 @@
       </div>
     </div>
   </div>
-</div>
 
-<!-- タブ6：在庫管理 -->
+  <!-- タブ6：在庫管理 -->
 <div id="tab-inventory" class="admin-section">
   <div style="margin-bottom: 14px;">
     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: bold;">
@@ -907,6 +900,7 @@
       <tbody id="admin-inventory-list"></tbody>
     </table>
   </div>
+</div>
 </div>
 
 <!-- ==================== 6. 印刷用レシート・領収書領域 ==================== -->
@@ -1265,7 +1259,7 @@ const firebaseConfig = {
         <div class="cart-item-actions">
           ${discBtnHtml}
           <button onclick="changeQty(${idx}, -1)">-</button>
-          <span style="min-width: 28px; text-align:center; font-weight:bold; text-decoration: underline; cursor: pointer; padding: 2px 4px;" onclick="openCartQtyNumpad(${idx})">${item.qty}</span>
+          <span style="min-width: 28px; text-align:center; font-weight:bold; cursor: pointer; padding: 2px 4px;" onclick="openCartQtyNumpad(${idx})">${item.qty}</span>
           <button onclick="changeQty(${idx}, 1)">+</button>
         </div>
       `;
@@ -2077,7 +2071,6 @@ const firebaseConfig = {
     document.getElementById("set-invoice-no").value = storeData.invoiceNo || "";
     document.getElementById("set-receipt-footer").value = storeData.receiptFooter || "";
     document.getElementById("set-staff-pass").value = storeData.staffPass || "1234";
-    document.getElementById("set-stock-enabled").checked = Boolean(storeData.stockEnabled);
   }
 
   window.saveStoreSettings = async () => {
@@ -2087,7 +2080,6 @@ const firebaseConfig = {
     storeData.invoiceNo = document.getElementById("set-invoice-no").value.trim();
     storeData.receiptFooter = document.getElementById("set-receipt-footer").value.trim();
     storeData.staffPass = document.getElementById("set-staff-pass").value.trim() || "1234";
-    storeData.stockEnabled = document.getElementById("set-stock-enabled").checked;
     await saveStoreData();
     alert("店舗設定を保存しました。");
   };
