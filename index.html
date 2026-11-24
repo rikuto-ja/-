@@ -1158,6 +1158,7 @@
       currentCashier: "",
       products: [],
       paymentMethods: ["クレジットカード", "PayPay", "交通系IC"],
+      selfCheckoutPaymentMethods: ["現金", "クレジットカード", "PayPay", "交通系IC"],
       presetDiscounts: [
         { name: "50円引", value: 50, type: "yen" },
         { name: "100円引", value: 100, type: "yen" },
@@ -1253,6 +1254,9 @@
     const snap = await getDoc(docRef);
     if (snap.exists()) {
       storeData = { ...createDefaultStoreData(), ...snap.data() };
+      if (!Array.isArray(storeData.selfCheckoutPaymentMethods)) {
+        storeData.selfCheckoutPaymentMethods = ["現金", ...(storeData.paymentMethods || [])];
+      }
     } else {
       storeData = createDefaultStoreData();
       await setDoc(docRef, storeData);
@@ -1877,7 +1881,13 @@
       return window.processSelectedRefund();
     }
     if (cart.length === 0) return alert("商品が選択されていません");
-    selectedPayment = "現金";
+    const methods = ["現金", ...storeData.paymentMethods];
+    if (isSelfCheckout) {
+      const firstAllowed = methods.find(m => isPaymentAllowedInSelfCheckout(m));
+      selectedPayment = firstAllowed || "";
+    } else {
+      selectedPayment = "現金";
+    }
     cashDeposit = 0;
     renderPaymentMethods();
     updateCheckoutDisplay();
@@ -1885,7 +1895,8 @@
   };
 
   window.selectPaymentMethod = (methodName) => {
-    selectedPayment = methodName || "現金";
+    if (isSelfCheckout && !isPaymentAllowedInSelfCheckout(methodName)) return;
+    selectedPayment = methodName || "";
     renderPaymentMethods();
     updateCheckoutDisplay();
   };
@@ -1896,17 +1907,23 @@
     const methods = ["現金", ...storeData.paymentMethods];
 
     methods.forEach(m => {
+      const isDisabled = isSelfCheckout && !isPaymentAllowedInSelfCheckout(m);
       const btn = document.createElement("button");
       btn.type = "button";
       btn.textContent = m;
-      if (m === selectedPayment) btn.classList.add("selected");
-      btn.disabled = isSelfCheckout;
+      if (!isDisabled && m === selectedPayment) btn.classList.add("selected");
+      btn.disabled = isDisabled;
       btn.onclick = () => {
-        if (isSelfCheckout) return;
+        if (isDisabled) return;
         window.selectPaymentMethod(m);
       };
       container.appendChild(btn);
     });
+  }
+
+  function escapeJsSingle(str) {
+    if (!str) return "";
+    return String(str).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   }
 
   function updateCheckoutDisplay() {
@@ -2952,13 +2969,58 @@
     renderAdminDiscounts();
   };
 
+  function isPaymentAllowedInSelfCheckout(methodName) {
+    const allowed = Array.isArray(storeData.selfCheckoutPaymentMethods)
+      ? storeData.selfCheckoutPaymentMethods
+      : ["現金", ...(storeData.paymentMethods || [])];
+    return allowed.includes(methodName);
+  }
+
+  window.toggleSelfCheckoutPaymentMethod = async (methodName, checked) => {
+    if (!Array.isArray(storeData.selfCheckoutPaymentMethods)) {
+      storeData.selfCheckoutPaymentMethods = ["現金", ...(storeData.paymentMethods || [])];
+    }
+    if (checked) {
+      if (!storeData.selfCheckoutPaymentMethods.includes(methodName)) {
+        storeData.selfCheckoutPaymentMethods.push(methodName);
+      }
+    } else {
+      storeData.selfCheckoutPaymentMethods = storeData.selfCheckoutPaymentMethods.filter(m => m !== methodName);
+    }
+    await saveStoreData();
+    renderAdminPayments();
+  };
+
   function renderAdminPayments() {
     const ul = document.getElementById("admin-payment-list");
     ul.innerHTML = "";
-    storeData.paymentMethods.forEach((m, idx) => {
+    const allMethods = ["現金", ...storeData.paymentMethods];
+
+    allMethods.forEach((m, idx) => {
+      const isCash = idx === 0;
+      const customIdx = idx - 1;
+      const allowed = isPaymentAllowedInSelfCheckout(m);
       const li = document.createElement("li");
-      li.style.cssText = "padding: 6px 0; border-bottom: 1px solid #ccc; display:flex; justify-content:space-between;";
-      li.innerHTML = `<span>${escapeHtml(m)}</span> <button type="button" class="danger" style="padding:2px 8px; font-size:12px;" onclick="deletePaymentMethod(${idx})">削除</button>`;
+      li.style.cssText = "padding: 8px 0; border-bottom: 1px solid #ccc; display:flex; justify-content:space-between; align-items:center; gap: 10px; flex-wrap: wrap;";
+
+      const labelHtml = `
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; font-weight:bold;">
+          <input type="checkbox" style="width:auto; transform:scale(1.15);" ${allowed ? "checked" : ""} onchange="toggleSelfCheckoutPaymentMethod('${escapeJsSingle(m)}', this.checked)">
+          <span>セルフレジで使う</span>
+        </label>
+      `;
+
+      const delBtnHtml = isCash
+        ? `<span style="font-size:12px; color:var(--dark-gray);">標準</span>`
+        : `<button type="button" class="danger" style="padding:2px 8px; font-size:12px;" onclick="deletePaymentMethod(${customIdx})">削除</button>`;
+
+      li.innerHTML = `
+        <span style="font-weight:bold;">${escapeHtml(m)}</span>
+        <div style="display:flex; align-items:center; gap:12px;">
+          ${labelHtml}
+          ${delBtnHtml}
+        </div>
+      `;
       ul.appendChild(li);
     });
   }
@@ -2966,14 +3028,25 @@
   window.addPaymentMethod = async () => {
     const val = document.getElementById("new-pay-method").value.trim();
     if (!val) return;
-    storeData.paymentMethods.push(val);
+    if (!storeData.paymentMethods.includes(val)) {
+      storeData.paymentMethods.push(val);
+    }
+    if (!Array.isArray(storeData.selfCheckoutPaymentMethods)) {
+      storeData.selfCheckoutPaymentMethods = ["現金", ...storeData.paymentMethods];
+    } else if (!storeData.selfCheckoutPaymentMethods.includes(val)) {
+      storeData.selfCheckoutPaymentMethods.push(val);
+    }
     document.getElementById("new-pay-method").value = "";
     await saveStoreData();
     renderAdminPayments();
   };
 
   window.deletePaymentMethod = async (idx) => {
+    const removed = storeData.paymentMethods[idx];
     storeData.paymentMethods.splice(idx, 1);
+    if (Array.isArray(storeData.selfCheckoutPaymentMethods) && removed) {
+      storeData.selfCheckoutPaymentMethods = storeData.selfCheckoutPaymentMethods.filter(m => m !== removed);
+    }
     await saveStoreData();
     renderAdminPayments();
   };
