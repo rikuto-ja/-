@@ -1088,11 +1088,13 @@
   // =========================================================================
   const SOUND_URLS = {
     buttonClick: "https://raw.githubusercontent.com/rikuto-ja/-/main/beep1.mp3",
-    checkoutDone: "https://raw.githubusercontent.com/rikuto-ja/-/main/beep2.mp3"
+    checkoutDone: "https://raw.githubusercontent.com/rikuto-ja/-/main/beep2.mp3",
+    staffCall: "https://raw.githubusercontent.com/rikuto-ja/-/main/beep3.mp3"
   };
 
   const audioClick = SOUND_URLS.buttonClick ? new Audio(SOUND_URLS.buttonClick) : null;
   const audioCheckout = SOUND_URLS.checkoutDone ? new Audio(SOUND_URLS.checkoutDone) : null;
+  const audioStaffCall = SOUND_URLS.staffCall ? new Audio(SOUND_URLS.staffCall) : null;
   let isSoundOn = true;
 
   function syncSoundButtons() {
@@ -1116,6 +1118,12 @@
     if (!isSoundOn || !audioCheckout) return;
     audioCheckout.currentTime = 0;
     audioCheckout.play().catch(e => console.log("音声再生スキップ:", e));
+  };
+
+  window.playStaffCallSound = () => {
+    if (!isSoundOn || !audioStaffCall) return;
+    audioStaffCall.currentTime = 0;
+    audioStaffCall.play().catch(e => console.log("音声再生スキップ:", e));
   };
 
   window.toggleSound = () => {
@@ -1835,6 +1843,7 @@
   };
 
   window.triggerStaffCall = () => {
+    playStaffCallSound();
     document.getElementById("staff-unlock-pass").value = "";
     document.getElementById("staff-pass-box").classList.add("hidden");
     document.getElementById("staff-call-notice").classList.remove("hidden");
