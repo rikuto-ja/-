@@ -1087,8 +1087,8 @@
   // 2. 効果音設定（GitHub等にアップロードした音声ファイルURLを指定可能）
   // =========================================================================
   const SOUND_URLS = {
-    buttonClick: "https://github.com/rikuto-ja/-/blob/main/beep1.mp3",
-    checkoutDone: "https://github.com/rikuto-ja/-/blob/main/beep2.mp3"
+    buttonClick: "https://raw.githubusercontent.com/rikuto-ja/-/main/beep1.mp3",
+    checkoutDone: "https://raw.githubusercontent.com/rikuto-ja/-/main/beep2.mp3"
   };
 
   const audioClick = SOUND_URLS.buttonClick ? new Audio(SOUND_URLS.buttonClick) : null;
@@ -1201,6 +1201,7 @@
   let submittedOrderCode = null;
   let submittedOrderItems = [];
   let unsubscribeOrderStatus = null;
+  let unsubscribeStoreProducts = null;
 
   // =========================================================================
   // 4. 起動時ルーティング＆認証
@@ -2151,15 +2152,39 @@
   };
 
   async function loadStoreDataForCustomer() {
+    if (unsubscribeStoreProducts) {
+      unsubscribeStoreProducts();
+      unsubscribeStoreProducts = null;
+    }
     const docRef = doc(db, "stores", storeId);
-    const snap = await getDoc(docRef);
-    if (!snap.exists()) return alert("店舗データが見つかりません");
-    storeData = { ...createDefaultStoreData(), ...snap.data() };
-    applyStockVisibilityState();
-    document.getElementById("cust-store-name").textContent = `${storeData.name} 事前注文`;
-    renderCustCategories();
-    renderCustProducts();
-    renderCustCart();
+    unsubscribeStoreProducts = onSnapshot(docRef, (snap) => {
+      if (!snap.exists()) return;
+      storeData = { ...createDefaultStoreData(), ...snap.data() };
+      applyStockVisibilityState();
+      document.getElementById("cust-store-name").textContent = `${storeData.name} 事前注文`;
+
+      // 編集中のカート内容も最新商品情報に同期
+      custCart = custCart
+        .map(item => {
+          const latestProd = storeData.products.find(p => p.id === item.productId);
+          if (!latestProd) return null;
+          const nextQty = storeData.stockEnabled && latestProd.stock > 0
+            ? Math.min(item.qty, latestProd.stock)
+            : item.qty;
+          return {
+            ...item,
+            name: latestProd.name,
+            price: Math.round(Number(latestProd.price || 0)),
+            taxRate: normalizeTaxRate(latestProd.taxRate),
+            qty: nextQty
+          };
+        })
+        .filter(Boolean);
+
+      renderCustCategories();
+      renderCustProducts();
+      renderCustCart();
+    });
   }
 
   function renderCustCategories() {
@@ -2299,42 +2324,53 @@
       submittedOrderDocId = orderDocRef.id;
     }
 
-    submittedOrderItems = itemsSnapshot;
+    submittedOrderItems = JSON.parse(JSON.stringify(itemsSnapshot));
     custCart = [];
     renderCustCart();
-    showCustomerOrderCompleteView();
     watchSubmittedOrderStatus();
+    showCustomerOrderCompleteView();
   };
 
   function watchSubmittedOrderStatus() {
+    const targetDocId = submittedOrderDocId;
     if (unsubscribeOrderStatus) {
       unsubscribeOrderStatus();
       unsubscribeOrderStatus = null;
     }
-    if (!submittedOrderDocId) return;
+    if (!targetDocId) return;
 
-    unsubscribeOrderStatus = onSnapshot(doc(db, "stores", storeId, "orders", submittedOrderDocId), (snap) => {
+    unsubscribeOrderStatus = onSnapshot(doc(db, "stores", storeId, "orders", targetDocId), (snap) => {
       console.log("[watchSubmittedOrderStatus] exists:", snap.exists(), "data:", snap.data());
       if (!snap.exists()) {
         if (unsubscribeOrderStatus) {
           unsubscribeOrderStatus();
           unsubscribeOrderStatus = null;
         }
-        submittedOrderDocId = null;
-        submittedOrderCode = null;
-        submittedOrderItems = [];
+        if (submittedOrderDocId === targetDocId) {
+          submittedOrderDocId = null;
+          submittedOrderCode = null;
+          submittedOrderItems = [];
+        }
         switchCustomerView("customer-order-deleted-view");
         return;
       }
       const data = snap.data();
+      if (data.items) {
+        submittedOrderItems = JSON.parse(JSON.stringify(data.items));
+        if (!document.getElementById("customer-order-complete-view").classList.contains("hidden")) {
+          showCustomerOrderCompleteView();
+        }
+      }
       if (data.status === "completed") {
         if (unsubscribeOrderStatus) {
           unsubscribeOrderStatus();
           unsubscribeOrderStatus = null;
         }
-        submittedOrderDocId = null;
-        submittedOrderCode = null;
-        submittedOrderItems = [];
+        if (submittedOrderDocId === targetDocId) {
+          submittedOrderDocId = null;
+          submittedOrderCode = null;
+          submittedOrderItems = [];
+        }
         switchCustomerView("customer-checkout-done-view");
       }
     });
@@ -2366,7 +2402,11 @@
       unsubscribeOrderStatus();
       unsubscribeOrderStatus = null;
     }
-    await deleteDoc(doc(db, "stores", storeId, "orders", docIdToDelete));
+    try {
+      await deleteDoc(doc(db, "stores", storeId, "orders", docIdToDelete));
+    } catch (e) {
+      console.error("[deleteSubmittedCustomerOrder] error:", e);
+    }
     custCart = [];
     renderCustCart();
     switchCustomerView("customer-order-deleted-view");
