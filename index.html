@@ -25,6 +25,7 @@
     -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
+    touch-action: manipulation;
   }
   input, textarea, select {
     -webkit-user-select: auto;
@@ -714,6 +715,10 @@
       </select>
       <button type="button" class="primary" onclick="applyCustomDiscount()">適用</button>
     </div>
+    <div style="margin-bottom: 16px; border-top: 1px solid #ccc; padding-top: 12px;">
+      <p style="margin-bottom: 8px; font-weight: bold;">現在の割引適用状況</p>
+      <div id="applied-discounts-list" style="font-size: 14px; line-height: 1.6; background: var(--gray); padding: 8px 10px; border-radius: 4px;"></div>
+    </div>
     <button type="button" class="danger" style="width: 100%;" onclick="removeDiscount()">割引を解除する</button>
   </div>
 </div>
@@ -911,10 +916,11 @@
     <!-- タブ4：売上履歴・再発行・払い戻し -->
     <div id="tab-sales" class="admin-section">
       <div style="border: 1px solid var(--border); padding: 10px; margin: 10px 0; border-radius: 4px; background: var(--gray);">
-        <div style="font-weight: bold; margin-bottom: 6px;">日時絞り込み & Excel出力</div>
+        <div style="font-weight: bold; margin-bottom: 6px;">日時・処理ID検索 & Excel出力</div>
         <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
           <label style="font-size: 13px;">開始: <input type="datetime-local" id="sales-filter-start" style="width: auto;"></label>
           <label style="font-size: 13px;">終了: <input type="datetime-local" id="sales-filter-end" style="width: auto;"></label>
+          <label style="font-size: 13px;">処理ID: <input type="text" id="sales-filter-txid" placeholder="TX-..." style="width: 190px;" oninput="applySalesFilter()"></label>
           <button type="button" onclick="applySalesFilter()">絞り込み</button>
           <button type="button" onclick="resetSalesFilter()">解除</button>
           <button type="button" class="primary" onclick="exportSalesToExcel()">Excel(.xlsx)出力</button>
@@ -1193,6 +1199,15 @@
   let cashDeposit = 0;
   let lastCompletedSale = null;
   let lastCompletedRefund = null;
+
+  function generateTransactionId() {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const ymd = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+    const hms = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const rand = Math.floor(1000 + Math.random() * 9000);
+    return `TX-${ymd}-${hms}-${rand}`;
+  }
 
   // テンキーステート
   let numpadTargetInputId = null;
@@ -1628,6 +1643,48 @@
     document.getElementById("discount-modal").classList.remove("hidden");
   };
 
+  function formatDiscountLabel(disc) {
+    if (!disc) return "";
+    const val = Math.round(Number(disc.value || 0));
+    return disc.type === "yen" ? `${val.toLocaleString()}円引き` : `${val}%OFF`;
+  }
+
+  function mergeDiscountRule(prevDisc, addVal, addType) {
+    const v = Math.round(Number(addVal || 0));
+    if (!prevDisc || prevDisc.type !== addType) {
+      return { value: v, type: addType };
+    }
+    if (addType === "yen") {
+      return { value: Math.round(Number(prevDisc.value || 0)) + v, type: "yen" };
+    }
+    // 複数回%引きを適用した場合は残額ベースで合算割引率を算出（例: 10% → 10% で 19%OFF）
+    const p1 = Math.min(100, Math.max(0, Number(prevDisc.value || 0)));
+    const p2 = Math.min(100, Math.max(0, v));
+    const combined = Math.min(100, Math.round((100 - ((100 - p1) * (100 - p2)) / 100) * 10) / 10);
+    return { value: combined, type: "percent" };
+  }
+
+  function renderAppliedDiscountsList() {
+    const listEl = document.getElementById("applied-discounts-list");
+    if (!listEl) return;
+
+    if (discountTargetIndex === null) {
+      if (!globalDiscount) {
+        listEl.innerHTML = `<span style="color: var(--dark-gray);">全体割引は適用されていません。</span>`;
+        return;
+      }
+      listEl.innerHTML = `<div>全体割引: <strong>${escapeHtml(formatDiscountLabel(globalDiscount))}</strong></div>`;
+      return;
+    }
+
+    const item = cart[discountTargetIndex];
+    if (!item || !item.discount) {
+      listEl.innerHTML = `<span style="color: var(--dark-gray);">この商品に割引は適用されていません。</span>`;
+      return;
+    }
+    listEl.innerHTML = `<div>${escapeHtml(item.name)}: <strong>${escapeHtml(formatDiscountLabel(item.discount))}</strong></div>`;
+  }
+
   function renderPresetDiscountButtons() {
     const box = document.getElementById("preset-discount-buttons");
     box.innerHTML = "";
@@ -1637,37 +1694,38 @@
       btn.textContent = d.name;
       btn.onclick = () => {
         applyDiscountValue(d.value, d.type);
-        closeModal("discount-modal");
       };
       box.appendChild(btn);
     });
+    renderAppliedDiscountsList();
   }
 
   window.applyCustomDiscount = () => {
     const val = Number(document.getElementById("custom-discount-val").value);
     const type = document.getElementById("custom-discount-type").value;
-    if (val <= 0) return alert("正しい数値を入力してください");
+    if (!Number.isFinite(val) || val <= 0) return alert("正しい数値を入力してください");
     applyDiscountValue(val, type);
-    closeModal("discount-modal");
+    document.getElementById("custom-discount-val").value = "";
   };
 
   function applyDiscountValue(value, type) {
     if (discountTargetIndex === null) {
-      globalDiscount = { value, type };
-    } else {
-      cart[discountTargetIndex].discount = { value, type };
+      globalDiscount = mergeDiscountRule(globalDiscount, value, type);
+    } else if (cart[discountTargetIndex]) {
+      cart[discountTargetIndex].discount = mergeDiscountRule(cart[discountTargetIndex].discount, value, type);
     }
     renderCart();
+    renderAppliedDiscountsList();
   }
 
   window.removeDiscount = () => {
     if (discountTargetIndex === null) {
       globalDiscount = null;
-    } else {
+    } else if (cart[discountTargetIndex]) {
       cart[discountTargetIndex].discount = null;
     }
     renderCart();
-    closeModal("discount-modal");
+    renderAppliedDiscountsList();
   };
 
   window.toggleTestMode = () => {
@@ -1715,7 +1773,9 @@
       await saveStoreData();
     }
 
+    const transactionId = generateTransactionId();
     const refundRecord = {
+      transactionId,
       items: JSON.parse(JSON.stringify(cart)),
       subtotal: -totals.subtotal,
       totalDiscount: -totals.totalDiscount,
@@ -2000,7 +2060,9 @@
       await saveStoreData();
     }
 
+    const transactionId = generateTransactionId();
     const saleRecord = {
+      transactionId,
       items: JSON.parse(JSON.stringify(cart)),
       subtotal: totals.subtotal,
       totalDiscount: totals.totalDiscount,
@@ -2074,6 +2136,7 @@
       ? `<div>担当: ${escapeHtml(sale.cashier)}</div>`
       : "";
 
+    const txIdHtml = sale.transactionId ? `<div>処理ID: ${escapeHtml(sale.transactionId)}</div>` : "";
     area.innerHTML = `
       ${testBanner}
       <div class="receipt-center receipt-bold" style="font-size: 16px;">${title}</div>
@@ -2082,6 +2145,7 @@
       <div class="receipt-center">TEL: ${escapeHtml(storeData.phone)}</div>
       ${storeData.invoiceNo ? `<div class="receipt-center">登録番号: ${escapeHtml(storeData.invoiceNo)}</div>` : ""}
       <div class="receipt-line"></div>
+      ${txIdHtml}
       <div>日時: ${dateStr}</div>
       ${cashierHtml}
       ${addresseeHtml}
@@ -2121,11 +2185,13 @@
       ? `<div>担当: ${escapeHtml(sale.cashier)}</div>`
       : "";
 
+    const txIdHtml = sale.transactionId ? `<div>処理ID: ${escapeHtml(sale.transactionId)}</div>` : "";
     area.innerHTML = `
       ${testBanner}
       <div class="receipt-center receipt-bold" style="font-size: 16px;">払 い 戻 し 伝 票</div>
       <div class="receipt-center receipt-bold">${escapeHtml(storeData.name)}</div>
       <div class="receipt-line"></div>
+      ${txIdHtml}
       <div>日時: ${dateStr}</div>
       ${cashierHtml}
       <div class="receipt-line"></div>
@@ -3138,18 +3204,25 @@
         ? escapeHtml(s.cashier || "未設定")
         : "-";
 
+      const actionButtonsHtml = s.refunded
+        ? `
+          <button type="button" style="padding:4px 6px; font-size:12px;" onclick="openSaleDetailModal(${originalIdx})">詳細</button>
+          <button type="button" style="padding:4px 6px; font-size:12px;" onclick="reprintRefundSlipFromHistory(${originalIdx})">払い戻し伝票印刷</button>
+        `
+        : `
+          <button type="button" style="padding:4px 6px; font-size:12px;" onclick="openSaleDetailModal(${originalIdx})">詳細</button>
+          <button type="button" style="padding:4px 6px; font-size:12px;" onclick="reprintSale(${originalIdx}, 'receipt')">レシート</button>
+          <button type="button" style="padding:4px 6px; font-size:12px;" onclick="reprintSale(${originalIdx}, 'invoice')">領収書</button>
+          <button type="button" class="danger" style="padding:4px 6px; font-size:12px;" onclick="refundSale(${originalIdx})">払戻</button>
+        `;
+
       tr.innerHTML = `
         <td>${dateStr}</td>
         <td>¥${Math.round(Number(s.grandTotal || 0)).toLocaleString()}</td>
         <td>${escapeHtml(s.paymentMethod)}</td>
         <td>${cashierDisplay}</td>
         <td style="color:${s.refunded ? 'var(--red)' : 'inherit'}; font-weight:bold;">${s.refunded ? "払戻/取消" : "完了"}</td>
-        <td>
-          <button type="button" style="padding:4px 6px; font-size:12px;" onclick="openSaleDetailModal(${originalIdx})">詳細</button>
-          <button type="button" style="padding:4px 6px; font-size:12px;" onclick="reprintSale(${originalIdx}, 'receipt')">レシート</button>
-          <button type="button" style="padding:4px 6px; font-size:12px;" onclick="reprintSale(${originalIdx}, 'invoice')">領収書</button>
-          ${!s.refunded ? `<button type="button" class="danger" style="padding:4px 6px; font-size:12px;" onclick="refundSale(${originalIdx})">払戻</button>` : ""}
-        </td>
+        <td>${actionButtonsHtml}</td>
       `;
       tbody.appendChild(tr);
     });
@@ -3182,8 +3255,13 @@
       ? `<div><strong>レジ打ち担当者:</strong> ${escapeHtml(sale.cashier || "未設定")}</div>`
       : `<div><strong>レジ打ち担当者:</strong> 記録OFF</div>`;
 
+    const txIdLine = sale.transactionId
+      ? `<div><strong>処理ID:</strong> ${escapeHtml(sale.transactionId)}</div>`
+      : `<div><strong>処理ID:</strong> -</div>`;
+
     document.getElementById("sale-detail-body").innerHTML = `
       <div style="margin-bottom: 10px;">
+        ${txIdLine}
         <div><strong>日時:</strong> ${new Date(sale.createdAt).toLocaleString("ja-JP")}</div>
         ${cashierLine}
         <div><strong>支払方法:</strong> ${escapeHtml(sale.paymentMethod)}</div>
@@ -3208,12 +3286,15 @@
   window.applySalesFilter = () => {
     const startVal = document.getElementById("sales-filter-start").value;
     const endVal = document.getElementById("sales-filter-end").value;
+    const txQuery = (document.getElementById("sales-filter-txid")?.value || "").trim().toLowerCase();
     const startTime = startVal ? new Date(startVal).getTime() : -Infinity;
     const endTime = endVal ? new Date(endVal).getTime() : Infinity;
 
     filteredSales = loadedSales.filter(s => {
       const t = new Date(s.createdAt).getTime();
-      return t >= startTime && t <= endTime;
+      const matchesTime = t >= startTime && t <= endTime;
+      const matchesTx = !txQuery || String(s.transactionId || "").toLowerCase().includes(txQuery);
+      return matchesTime && matchesTx;
     });
     renderSalesTable(filteredSales);
   };
@@ -3221,8 +3302,16 @@
   window.resetSalesFilter = () => {
     document.getElementById("sales-filter-start").value = "";
     document.getElementById("sales-filter-end").value = "";
+    const txInput = document.getElementById("sales-filter-txid");
+    if (txInput) txInput.value = "";
     filteredSales = [...loadedSales];
     renderSalesTable(filteredSales);
+  };
+
+  window.reprintRefundSlipFromHistory = (idx) => {
+    const sale = loadedSales[idx];
+    if (!sale) return;
+    printRefundSlip(sale);
   };
 
   function calcSaleTaxByRate(sale) {
@@ -3395,6 +3484,7 @@
 
     lastCompletedRefund = {
       ...sale,
+      transactionId: sale.transactionId || generateTransactionId(),
       cashier: storeData.staffTrackingEnabled ? (sale.cashier || getActiveCashierName()) : "記録OFF",
       createdAt: new Date().toISOString()
     };
@@ -3462,6 +3552,16 @@
       isDraggingScroll = false;
     });
   })();
+
+  let lastTouchEndTime = 0;
+  document.addEventListener("touchend", (e) => {
+    if (e.target.closest("input, textarea, select")) return;
+    const now = Date.now();
+    if (now - lastTouchEndTime <= 300) {
+      e.preventDefault();
+    }
+    lastTouchEndTime = now;
+  }, { passive: false });
 
   window.closeModal = (id) => {
     document.getElementById(id).classList.add("hidden");
