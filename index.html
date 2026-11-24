@@ -2317,44 +2317,71 @@
   };
 
   function switchCustomerView(viewId) {
+    const custRoot = document.getElementById("customer-order-screen");
     ["main-pos", "customer-order-complete-view", "customer-order-deleted-view", "customer-checkout-done-view"]
       .forEach(id => {
-        const el = document.getElementById(id) || document.querySelector(`#customer-order-screen #${id}`);
+        const el = custRoot ? custRoot.querySelector(`#${id}`) : document.getElementById(id);
         if (el) el.classList.toggle("hidden", id !== viewId);
       });
   }
 
+  let isSubmittingCustomerOrder = false;
+
   window.submitCustomerOrder = async () => {
+    if (isSubmittingCustomerOrder) return;
     console.log("[submitCustomerOrder] submittedOrderDocId:", submittedOrderDocId, "custCart:", custCart);
-    if (custCart.length === 0) return alert("商品を選んでください");
-    const ordersCol = collection(db, "stores", storeId, "orders");
-    const itemsSnapshot = JSON.parse(JSON.stringify(custCart));
+    if (!Array.isArray(custCart) || custCart.length === 0) return alert("商品を選んでください");
 
-    if (submittedOrderDocId) {
-      await updateDoc(doc(db, "stores", storeId, "orders", submittedOrderDocId), {
-        items: itemsSnapshot,
-        status: "pending",
-        updatedAt: new Date().toISOString()
-      });
-      if (!submittedOrderCode) {
-        submittedOrderCode = String(Math.floor(1000 + Math.random() * 9000));
+    isSubmittingCustomerOrder = true;
+    try {
+      const ordersCol = collection(db, "stores", storeId, "orders");
+      const itemsSnapshot = custCart.map(i => ({
+        productId: i.productId,
+        name: i.name,
+        price: Math.round(Number(i.price || 0)),
+        qty: Math.max(1, Math.floor(Number(i.qty || 1))),
+        taxRate: normalizeTaxRate(i.taxRate)
+      }));
+
+      let activeCode = submittedOrderCode;
+      if (submittedOrderDocId) {
+        if (!activeCode) {
+          activeCode = String(Math.floor(1000 + Math.random() * 9000));
+        }
+        await setDoc(
+          doc(db, "stores", storeId, "orders", submittedOrderDocId),
+          {
+            orderCode: activeCode,
+            items: itemsSnapshot,
+            status: "pending",
+            updatedAt: new Date().toISOString()
+          },
+          { merge: true }
+        );
+        submittedOrderCode = activeCode;
+      } else {
+        activeCode = String(Math.floor(1000 + Math.random() * 9000));
+        const orderDocRef = await addDoc(ordersCol, {
+          orderCode: activeCode,
+          items: itemsSnapshot,
+          status: "pending",
+          createdAt: new Date().toISOString()
+        });
+        submittedOrderDocId = orderDocRef.id;
+        submittedOrderCode = activeCode;
       }
-    } else {
-      submittedOrderCode = String(Math.floor(1000 + Math.random() * 9000));
-      const orderDocRef = await addDoc(ordersCol, {
-        orderCode: submittedOrderCode,
-        items: itemsSnapshot,
-        status: "pending",
-        createdAt: new Date().toISOString()
-      });
-      submittedOrderDocId = orderDocRef.id;
-    }
 
-    submittedOrderItems = JSON.parse(JSON.stringify(itemsSnapshot));
-    custCart = [];
-    renderCustCart();
-    watchSubmittedOrderStatus();
-    showCustomerOrderCompleteView();
+      submittedOrderItems = JSON.parse(JSON.stringify(itemsSnapshot));
+      custCart = [];
+      renderCustCart();
+      showCustomerOrderCompleteView();
+      watchSubmittedOrderStatus();
+    } catch (e) {
+      console.error("[submitCustomerOrder] error:", e);
+      alert("注文の確定に失敗しました。通信状況を確認してください。");
+    } finally {
+      isSubmittingCustomerOrder = false;
+    }
   };
 
   function watchSubmittedOrderStatus() {
@@ -2403,16 +2430,27 @@
   }
 
   function showCustomerOrderCompleteView() {
+    const custRoot = document.getElementById("customer-order-screen");
+    const codeEl = custRoot ? custRoot.querySelector("#completed-order-code-display") : document.getElementById("completed-order-code-display");
+    const previewEl = custRoot ? custRoot.querySelector("#completed-order-items-preview") : document.getElementById("completed-order-items-preview");
+    if (codeEl) codeEl.textContent = submittedOrderCode || "----";
+    if (previewEl) {
+      previewEl.innerHTML = (submittedOrderItems || [])
+        .map(i => `<div style="display:flex; justify-content:space-between; padding:3px 0;"><span>${escapeHtml(i.name)} ×${i.qty}</span><span>¥${(Math.round(Number(i.price || 0)) * Math.round(Number(i.qty || 0))).toLocaleString()}</span></div>`)
+        .join("");
+    }
     switchCustomerView("customer-order-complete-view");
-    document.getElementById("completed-order-code-display").textContent = submittedOrderCode || "----";
-    document.getElementById("completed-order-items-preview").innerHTML = submittedOrderItems
-      .map(i => `<div style="display:flex; justify-content:space-between; padding:3px 0;"><span>${escapeHtml(i.name)} ×${i.qty}</span><span>¥${(Number(i.price || 0) * Number(i.qty || 0)).toLocaleString()}</span></div>`)
-      .join("");
   }
 
   window.editSubmittedCustomerOrder = () => {
     console.log("[editSubmittedCustomerOrder] items:", submittedOrderItems);
-    custCart = JSON.parse(JSON.stringify(submittedOrderItems));
+    custCart = (submittedOrderItems || []).map(i => ({
+      productId: i.productId,
+      name: i.name,
+      price: Math.round(Number(i.price || 0)),
+      qty: Math.max(1, Math.floor(Number(i.qty || 1))),
+      taxRate: normalizeTaxRate(i.taxRate)
+    }));
     renderCustCart();
     switchCustomerView("main-pos");
   };
