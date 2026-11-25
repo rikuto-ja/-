@@ -446,20 +446,37 @@
   /* QRコードモーダル印刷用（#qr-modalが開いている時のみ有効） */
   @media print {
     body.printing-qr * { visibility: hidden; }
-    body.printing-qr #qr-modal,
-    body.printing-qr #qr-modal * { visibility: visible; }
-    body.printing-qr #qr-modal {
-      position: static;
-      background: #fff;
-      padding: 0;
+    body.printing-qr #admin-modal,
+    body.printing-qr #admin-modal .modal-content,
+    body.printing-qr #admin-modal .modal-body,
+    body.printing-qr #tab-mobile-qr,
+    body.printing-qr #tab-mobile-qr * {
+      visibility: visible;
     }
-    body.printing-qr #qr-modal .modal-content {
-      border: none;
-      box-shadow: none;
-      max-width: 100%;
+    body.printing-qr #admin-modal {
+      position: static !important;
+      display: block !important;
+      background: #fff !important;
+      padding: 0 !important;
     }
-    body.printing-qr #qr-modal .no-print {
+    body.printing-qr #admin-modal .modal-header,
+    body.printing-qr #admin-modal .admin-tabs,
+    body.printing-qr #admin-modal .modal-body > *:not(#tab-mobile-qr),
+    body.printing-qr #tab-mobile-qr > h3,
+    body.printing-qr #tab-mobile-qr button {
       display: none !important;
+    }
+    body.printing-qr #admin-modal .modal-content {
+      border: none !important;
+      box-shadow: none !important;
+      max-width: 100% !important;
+      width: 100% !important;
+    }
+    body.printing-qr #admin-mobile-qrcode-container canvas {
+      display: none !important;
+    }
+    body.printing-qr #admin-mobile-qrcode-container img {
+      display: block !important;
     }
   }
 
@@ -551,7 +568,6 @@
     <div class="header-controls" id="staff-header-controls">
       <button type="button" id="toggle-left-camera-btn" onclick="togglePosLeftCameraMode()">バーコード読取</button>
       <button type="button" onclick="openOrderLookupModal()">モバイル番号入力</button>
-      <button type="button" onclick="showCustomerQrModal()">モバイルQR</button>
       <button type="button" onclick="openAdminModal()">メニュー</button>
       <button type="button" class="danger" onclick="handleLogout()">ログアウト</button>
     </div>
@@ -817,22 +833,6 @@
   </div>
 </div>
 
-<!-- 予約用QR表示モーダル -->
-<div id="qr-modal" class="modal-overlay hidden">
-  <div class="modal-content" style="text-align: center;">
-    <div class="modal-header">
-      <h2>お客様注文用QRコード</h2>
-      <button type="button" onclick="closeModal('qr-modal')">閉じる</button>
-    </div>
-    <p style="margin-bottom: 12px;">別のスマホやタブレットでこのQRコードを読み取ると、商品を選んで注文番号を発行できます。</p>
-    <div id="qrcode-container" style="display: flex; justify-content: center; margin: 20px 0;"></div>
-    <p id="qr-url-text" style="font-size: 12px; word-break: break-all; color: var(--dark-gray);"></p>
-    <div class="no-print" style="display: flex; gap: 8px; justify-content: center; margin-top: 16px;">
-      <button type="button" class="primary" onclick="printQrModal()">QRコードを印刷</button>
-    </div>
-  </div>
-</div>
-
 <!-- 領収書宛名・備考モーダル -->
 <div id="note-modal" class="modal-overlay hidden">
   <div class="modal-content">
@@ -894,6 +894,7 @@
       <button type="button" onclick="switchAdminTab('tab-store', this)">店舗・レシート設定</button>
       <button type="button" onclick="switchAdminTab('tab-inventory', this)">在庫管理</button>
       <button type="button" onclick="switchAdminTab('tab-staff', this)">担当者</button>
+      <button type="button" onclick="switchAdminTab('mobile-qr', this)">モバイルQR</button>
       <button type="button" onclick="switchAdminTab('tab-ops-settings', this)">設定</button>
       <button type="button" onclick="location.href='member-card.html'">会員カード</button>
       <button type="button" onclick="switchAdminTab('tab-reset', this)">データ</button>
@@ -1067,6 +1068,18 @@
     </div>
 
     <!-- タブ8：設定（効果音・セルフレジ・払戻・テストモード） -->
+    <div id="tab-mobile-qr" class="admin-section">
+      <h3>モバイル注文QRコード</h3>
+      <div style="display:flex; flex-direction:column; align-items:center; gap:10px; padding:14px; border:1px solid var(--border); border-radius:6px; background:var(--gray);">
+        <div id="admin-mobile-qrcode-container" style="background:#fff; padding:10px; border:1px solid var(--border); border-radius:4px;"></div>
+        <div id="admin-mobile-qr-url-text" style="font-size:12px; word-break:break-all; color:var(--dark-gray);"></div>
+        <div id="admin-mobile-qr-token-text" style="font-size:12px; color:var(--dark-gray);"></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:4px;">
+          <button type="button" class="primary" onclick="printQrModal()">印刷</button>
+          <button type="button" onclick="renewMobileOrderQr()">QRを更新（旧QR無効化）</button>
+        </div>
+      </div>
+    </div>
     <div id="tab-ops-settings" class="admin-section">
       <h3>レジ動作設定</h3>
       <p style="font-size: 13px; color: var(--dark-gray); margin-bottom: 6px;">
@@ -1082,11 +1095,6 @@
         <button type="button" id="admin-self-checkout-btn" onclick="enableSelfCheckoutFromAdmin()">セルフレジ</button>
         <button type="button" class="danger" id="admin-refund-mode-btn" onclick="toggleRefundMode()">払い戻し: OFF</button>
         <button type="button" id="admin-test-mode-btn" onclick="toggleTestMode()">テストモード: OFF</button>
-      </div>
-      <div style="border:1px solid var(--border); border-radius:6px; padding:12px; margin-bottom:14px; background:var(--gray);">
-        <div style="font-weight:bold; margin-bottom:6px;">モバイル注文QRコード管理</div>
-        <div id="current-mobile-qr-token-text" style="font-size:13px; margin-bottom:8px;">現在のQRトークン: 未設定</div>
-        <button type="button" onclick="renewMobileOrderQr()">モバイル注文QRを更新（旧QRを無効化）</button>
       </div>
       <div style="border-top: 1px solid #ccc; padding-top: 12px; font-size: 13px; color: var(--dark-gray); line-height: 1.6;">
         <div><strong>※セルフレジボタンについて:</strong> 「店舗・レシート設定」でセルフレジ解除用パスワードを設定してください。</div>
@@ -3049,32 +3057,47 @@
   // =========================================================================
   // 10. 外部QRコード予約システム（お客様側＆レジ側連携）
   // =========================================================================
+  function renderAdminMobileQrTab() {
+    const baseUrl = window.location.href.split("?")[0];
+    const token = storeData.mobileOrderQrToken || "";
+    const currentStoreId = storeId || targetStoreId || "";
+    const orderUrl = `${baseUrl}?mode=order&store=${encodeURIComponent(currentStoreId)}${token ? `&qr=${encodeURIComponent(token)}` : ""}`;
+    const qrContainer = document.getElementById("admin-mobile-qrcode-container");
+    if (qrContainer) {
+      requestAnimationFrame(() => {
+        qrContainer.innerHTML = "";
+        new QRCode(qrContainer, {
+          text: orderUrl,
+          width: 220,
+          height: 220
+        });
+      });
+    }
+    const urlEl = document.getElementById("admin-mobile-qr-url-text");
+    if (urlEl) urlEl.textContent = orderUrl;
+    const tokenEl = document.getElementById("admin-mobile-qr-token-text");
+    if (tokenEl) tokenEl.textContent = `現在のQRトークン: ${token || "未設定"}`;
+    const settingTokenEl = document.getElementById("current-mobile-qr-token-text");
+    if (settingTokenEl) settingTokenEl.textContent = `現在のQRトークン: ${token || "未設定"}`;
+  }
+
   window.renewMobileOrderQr = async () => {
     if (!confirm("モバイル注文のQRコードを更新しますか？現在このQRコードを開いている端末は注文できなくなります。")) return;
     storeData.mobileOrderQrToken = Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
     await saveStoreData();
-    const tokenEl = document.getElementById("current-mobile-qr-token-text");
-    if (tokenEl) {
-      tokenEl.textContent = `現在のQRトークン: ${storeData.mobileOrderQrToken}`;
-    }
-    if (typeof window.showCustomerQrModal === "function") {
-      window.showCustomerQrModal();
-    }
+    renderAdminMobileQrTab();
   };
 
   window.showCustomerQrModal = () => {
-    const baseUrl = window.location.href.split("?")[0];
-    const token = storeData.mobileOrderQrToken || "";
-    const orderUrl = `${baseUrl}?mode=order&store=${storeId}${token ? `&qr=${encodeURIComponent(token)}` : ""}`;
-    const qrContainer = document.getElementById("qrcode-container");
-    qrContainer.innerHTML = "";
-    new QRCode(qrContainer, {
-      text: orderUrl,
-      width: 220,
-      height: 220
-    });
-    document.getElementById("qr-url-text").textContent = orderUrl;
-    document.getElementById("qr-modal").classList.remove("hidden");
+    if (typeof window.openAdminModal === "function") {
+      window.openAdminModal();
+    }
+    const tabBtn = document.querySelector(`.admin-tabs button[onclick*="'tab-mobile-qr'"]`);
+    if (typeof window.switchAdminTab === "function") {
+      window.switchAdminTab("tab-mobile-qr", tabBtn);
+    } else {
+      renderAdminMobileQrTab();
+    }
   };
 
   window.printQrModal = () => {
@@ -3570,13 +3593,24 @@
   };
 
   window.switchAdminTab = (tabId, btnEl) => {
+    const normalizedId = tabId?.startsWith("tab-") ? tabId : `tab-${tabId}`;
+    const sectionEl = document.getElementById(normalizedId);
+    if (!sectionEl) return;
+
     document.querySelectorAll(".admin-section").forEach(el => el.classList.remove("active"));
     document.querySelectorAll(".admin-tabs button").forEach(el => el.classList.remove("active"));
-    document.getElementById(tabId).classList.add("active");
-    btnEl.classList.add("active");
-    if (tabId === "tab-staff") renderStaffTabUI();
-    if (tabId === "tab-inventory") renderAdminInventory();
-    if (tabId === "tab-ops-settings") syncPosActionStatesForMode();
+    sectionEl.classList.add("active");
+
+    if (btnEl) {
+      btnEl.classList.add("active");
+    } else {
+      document.querySelector(`.admin-tabs button[onclick*="'${tabId}'"], .admin-tabs button[onclick*="'${normalizedId}'"]`)?.classList.add("active");
+    }
+
+    if (normalizedId === "tab-staff") renderStaffTabUI();
+    if (normalizedId === "tab-mobile-qr") renderAdminMobileQrTab();
+    if (normalizedId === "tab-inventory") renderAdminInventory();
+    if (normalizedId === "tab-ops-settings") syncPosActionStatesForMode();
   };
 
   window.handleProdTaxPresetChange = () => {
