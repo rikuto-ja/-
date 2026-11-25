@@ -8,6 +8,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <!-- Excel(.xlsx)出力用ライブラリ -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- バーコード読み取り用ライブラリ -->
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
   :root {
     --bg: #ffffff;
@@ -527,6 +529,7 @@
       <span class="header-sub-badge hidden" id="current-cashier-badge">担当: 未設定</span>
     </div>
     <div class="header-controls" id="staff-header-controls">
+      <button type="button" id="toggle-left-camera-btn" onclick="togglePosLeftCameraMode()">バーコード読取</button>
       <button type="button" onclick="openOrderLookupModal()">モバイル番号入力</button>
       <button type="button" onclick="showCustomerQrModal()">モバイルQR</button>
       <button type="button" onclick="openAdminModal()">メニュー</button>
@@ -540,8 +543,15 @@
   </header>
 
   <div id="main-pos">
-    <!-- 左：商品一覧 -->
+    <!-- 左：商品一覧 / バーコードカメラ切替 -->
     <div class="product-area">
+      <div id="pos-left-camera-section" class="hidden">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; flex-wrap:wrap;">
+          <h3 style="font-size:16px;">バーコードカメラ読取</h3>
+          <button type="button" onclick="restartPosLeftCamera()">カメラ再起動</button>
+        </div>
+        <div id="pos-left-camera-box" style="width:100%; min-height:280px; border:2px solid var(--border); border-radius:6px; background:var(--gray);"></div>
+      </div>
       <div class="category-tabs" id="category-tabs"></div>
       <div class="product-grid" id="product-grid"></div>
     </div>
@@ -573,6 +583,13 @@
 </div>
 
 <!-- ==================== 3. 外部端末用：QR商品予約画面 ==================== -->
+<div id="mobile-order-locked-overlay" class="modal-overlay hidden" style="z-index: 9999; background: #fff;">
+  <div class="modal-content" style="max-width: 420px; text-align: center;">
+    <h2 style="margin-bottom: 12px;">QRコードが無効化されました</h2>
+    <p style="margin-bottom: 16px;">店舗のモバイル注文QRコードが更新されたため、この画面からは注文できません。店頭の新しいQRコードを読み込み直してください。</p>
+    <button type="button" class="primary" style="width: 100%; padding: 12px;" onclick="location.reload()">再読み込み</button>
+  </div>
+</div>
 <div id="customer-order-screen" class="hidden">
   <header>
     <div class="header-title" id="cust-store-name">モバイル注文</div>
@@ -657,27 +674,40 @@
       <h2>お会計</h2>
       <button type="button" onclick="closeModal('checkout-modal')">閉じる</button>
     </div>
-    <div style="margin-bottom: 6px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom: 6px;">
       <p style="font-weight: bold;">支払い方法を選択</p>
+      <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+        <button type="button" id="toggle-split-payment-btn" style="padding:5px 10px; font-size:13px;" onclick="toggleSplitPaymentMode()">併用払い</button>
+        <button type="button" style="padding:5px 10px; font-size:13px;" onclick="openBarcodeScannerModal('member')">会員QR読取</button>
+        <button type="button" style="padding:5px 10px; font-size:13px;" onclick="openMemberChargeFlow()">チャージ</button>
+      </div>
+    </div>
+    <div id="member-checkout-status" style="font-size:13px; font-weight:bold; margin-bottom:8px; padding:6px 8px; border:1px solid var(--border); border-radius:4px; background:var(--gray);">
+      会員カード: 未読取（QR読取で残高決済＆ポイント付与が可能）
     </div>
     <div class="payment-methods" id="payment-method-buttons"></div>
 
     <div class="calc-display">
       <div class="calc-row"><span>お支払い合計:</span><span id="pay-modal-total" style="font-weight: bold;">¥0</span></div>
+      <div id="split-summary-area" class="hidden">
+        <div class="calc-row"><span>併用済み額:</span><span id="pay-modal-split-paid">¥0</span></div>
+        <div class="calc-row"><span>残りお支払い額:</span><span id="pay-modal-remaining" style="font-weight: bold;">¥0</span></div>
+      </div>
+      <div id="split-payments-list" style="margin: 6px 0; font-size: 14px;"></div>
       <div id="cash-calc-area">
         <div class="calc-row"><span>お預かり金額:</span><span id="pay-modal-deposit">¥0</span></div>
         <div class="calc-row change"><span>お釣り:</span><span id="pay-modal-change">¥0</span></div>
       </div>
     </div>
+    <div id="split-input-area" class="hidden" style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center;">
+      <input type="text" id="split-payment-amount-input" readonly onclick="openNumpadForInput('split-payment-amount-input', '併用する金額')" placeholder="併用金額（空欄で残額全額）" style="flex: 1;">
+      <button type="button" onclick="addSplitPayment()">この決済で確定・追加</button>
+      <button type="button" class="danger" onclick="clearSplitPayments()">併用クリア</button>
+    </div>
 
     <!-- 現金用テンキー -->
     <div id="cash-numpad-area">
-      <div style="display: flex; gap: 6px; margin-bottom: 8px;">
-        <button type="button" style="flex:1;" onclick="setExactDeposit()">ぴったり</button>
-        <button type="button" style="flex:1;" onclick="addDeposit(1000)">+1,000円</button>
-        <button type="button" style="flex:1;" onclick="addDeposit(5000)">+5,000円</button>
-        <button type="button" style="flex:1;" onclick="addDeposit(10000)">+10,000円</button>
-      </div>
+      
       <div class="numpad">
         <button type="button" onclick="pressNum('7')">7</button>
         <button type="button" onclick="pressNum('8')">8</button>
@@ -845,6 +875,7 @@
       <button type="button" onclick="switchAdminTab('tab-inventory', this)">在庫管理</button>
       <button type="button" onclick="switchAdminTab('tab-staff', this)">担当者</button>
       <button type="button" onclick="switchAdminTab('tab-ops-settings', this)">設定</button>
+      <button type="button" onclick="location.href='member-card.html'">会員カード</button>
       <button type="button" onclick="switchAdminTab('tab-reset', this)">初期化</button>
     </div>
 
@@ -857,6 +888,10 @@
         <input type="number" id="prod-price" placeholder="価格(税込)">
         <input type="text" id="prod-cat" placeholder="カテゴリ(例: 飲料)">
         <input type="number" id="prod-stock" placeholder="在庫数">
+        <div style="display: flex; gap: 4px; align-items: center;">
+          <input type="text" id="prod-barcode" placeholder="バーコード番号">
+          <button type="button" style="padding: 8px 10px; font-size: 13px; white-space: nowrap;" onclick="openBarcodeScannerModal('product')">読取</button>
+        </div>
         <select id="prod-tax-preset" onchange="handleProdTaxPresetChange()">
           <option value="10">消費税 10%</option>
           <option value="8">消費税 8%（軽減）</option>
@@ -948,7 +983,12 @@
         <div><label>電話番号</label><input type="text" id="set-store-phone"></div>
         <div><label>インボイス登録番号 (T+13桁)</label><input type="text" id="set-invoice-no" placeholder="T1234567890123"></div>
         <div><label>レシート下部メッセージ</label><input type="text" id="set-receipt-footer" placeholder="ありがとうございました"></div>
-        <div><label>セルフレジ解除用パスワード（未入力時はセルフレジ切替不可・ボタン灰色）</label><input type="text" id="set-staff-pass" placeholder="例: 1234"></div>
+        <div><label>ポイント付与率（%）</label><input type="number" id="set-point-rate" min="0" max="100" step="0.1" placeholder="例: 1"></div>
+        <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:center;">
+          <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="set-point-card-enabled"> ポイントカード機能</label>
+          <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" id="set-balance-card-enabled"> 残高カード機能</label>
+        </div>
+        <div><label>セルフレジ解除用パスワード（未入力時はセルフレジ切替不可）</label><input type="text" id="set-staff-pass" placeholder="例: 1234"></div>
         <button type="button" class="primary" style="padding: 14px;" onclick="saveStoreSettings()">設定を保存する</button>
       </div>
     </div>
@@ -1020,6 +1060,11 @@
         <button type="button" class="danger" id="admin-refund-mode-btn" onclick="toggleRefundMode()">払い戻し: OFF</button>
         <button type="button" id="admin-test-mode-btn" onclick="toggleTestMode()">テストモード: OFF</button>
       </div>
+      <div style="border:1px solid var(--border); border-radius:6px; padding:12px; margin-bottom:14px; background:var(--gray);">
+        <div style="font-weight:bold; margin-bottom:6px;">モバイル注文QRコード管理</div>
+        <div id="current-mobile-qr-token-text" style="font-size:13px; margin-bottom:8px;">現在のQRトークン: 未設定</div>
+        <button type="button" onclick="renewMobileOrderQr()">モバイル注文QRを更新（旧QRを無効化）</button>
+      </div>
       <div style="border-top: 1px solid #ccc; padding-top: 12px; font-size: 13px; color: var(--dark-gray); line-height: 1.6;">
         <div><strong>※セルフレジボタンについて:</strong> 「店舗・レシート設定」でセルフレジ解除用パスワードを設定してください。</div>
       </div>
@@ -1054,7 +1099,7 @@
     <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 20px;">
       <button type="button" onclick="printCompletedReceipt()">レシート印刷</button>
       <button type="button" onclick="openReceiptInputFromComplete()">領収書印刷</button>
-      <button type="button" class="primary" style="padding: 14px; font-size: 18px;" onclick="goToNextCheckout()">次の会計へ</button>
+      <button type="button" id="complete-next-action-btn" class="primary" style="padding: 14px; font-size: 18px;" onclick="goToNextCheckout()">次の会計へ</button>
     </div>
   </div>
 </div>
@@ -1075,6 +1120,48 @@
       <input type="text" id="modal-receipt-proviso" placeholder="お品代として">
     </div>
     <button type="button" class="primary" style="width: 100%; padding: 12px;" onclick="confirmAndPrintInvoice()">この内容で領収書を印刷</button>
+  </div>
+</div>
+
+<div id="member-charge-modal" class="modal-overlay hidden" style="z-index: 3100;">
+  <div class="modal-content" style="max-width: 420px;">
+    <div class="modal-header">
+      <h2>会員残高チャージ</h2>
+      <button type="button" onclick="closeModal('member-charge-modal')">閉じる</button>
+    </div>
+    <p id="charge-member-info" style="font-weight:bold; margin-bottom:10px;"></p>
+    <input type="text" id="charge-amount-input" readonly placeholder="0" style="font-size:24px; font-weight:bold; text-align:right; margin-bottom:12px;">
+    <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:10px;">
+      <button type="button" style="padding:14px; font-size:18px;" onclick="appendChargeDigit('7')">7</button>
+      <button type="button" style="padding:14px; font-size:18px;" onclick="appendChargeDigit('8')">8</button>
+      <button type="button" style="padding:14px; font-size:18px;" onclick="appendChargeDigit('9')">9</button>
+      <button type="button" style="padding:14px; font-size:18px;" onclick="appendChargeDigit('4')">4</button>
+      <button type="button" style="padding:14px; font-size:18px;" onclick="appendChargeDigit('5')">5</button>
+      <button type="button" style="padding:14px; font-size:18px;" onclick="appendChargeDigit('6')">6</button>
+      <button type="button" style="padding:14px; font-size:18px;" onclick="appendChargeDigit('1')">1</button>
+      <button type="button" style="padding:14px; font-size:18px;" onclick="appendChargeDigit('2')">2</button>
+      <button type="button" style="padding:14px; font-size:18px;" onclick="appendChargeDigit('3')">3</button>
+      <button type="button" style="padding:14px; font-size:18px;" onclick="clearChargeDigit()">C</button>
+      <button type="button" style="padding:14px; font-size:18px;" onclick="appendChargeDigit('0')">0</button>
+      <button type="button" style="padding:14px; font-size:18px;" onclick="backspaceChargeDigit()">←</button>
+    </div>
+    <button type="button" class="primary" style="width:100%; padding:14px;" onclick="executeMemberCharge()">確定</button>
+  </div>
+</div>
+
+<!-- バーコード読み取りモーダル -->
+<div id="barcode-scanner-modal" class="modal-overlay hidden" style="z-index: 3200;">
+  <div class="modal-content" style="max-width: 440px;">
+    <div class="modal-header">
+      <h2 id="barcode-scanner-title">バーコード読み取り</h2>
+      <button type="button" onclick="closeBarcodeScannerModal()">閉じる</button>
+    </div>
+    <div id="barcode-reader-box" style="width: 100%; min-height: 240px; border: 2px solid var(--border); margin-bottom: 12px;"></div>
+    <p style="font-size: 13px; color: var(--dark-gray); margin-bottom: 8px;">カメラで読み取れない場合は手入力またはスキャナ入力してください。</p>
+    <div style="display: flex; gap: 8px;">
+      <input type="text" id="manual-barcode-input" placeholder="バーコード番号" onkeydown="handleManualBarcodeKeydown(event)">
+      <button type="button" class="primary" onclick="confirmManualBarcode()">確定</button>
+    </div>
   </div>
 </div>
 
@@ -1193,6 +1280,32 @@
   const urlParams = new URLSearchParams(window.location.search);
   const isCustomerOrderMode = urlParams.get("mode") === "order";
   const targetStoreId = urlParams.get("store");
+  const initialQrToken = urlParams.get("qr") || "";
+  let isMobileQrInvalidated = false;
+
+  function applyMobileQrLockState(currentStoreToken) {
+    if (!isCustomerOrderMode) return;
+    const invalid = !initialQrToken || !currentStoreToken || initialQrToken !== currentStoreToken;
+    isMobileQrInvalidated = invalid;
+    const overlay = document.getElementById("mobile-order-locked-overlay");
+    const orderScreen = document.getElementById("customer-order-screen");
+    if (overlay) {
+      overlay.classList.toggle("hidden", !invalid);
+      overlay.style.display = invalid ? "flex" : "";
+    }
+    if (orderScreen) {
+      orderScreen.style.pointerEvents = invalid ? "none" : "";
+    }
+  }
+
+  if (isCustomerOrderMode && targetStoreId) {
+    onSnapshot(doc(db, "stores", targetStoreId), (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data() || {};
+      storeData.mobileOrderQrToken = data.mobileOrderQrToken || "";
+      applyMobileQrLockState(storeData.mobileOrderQrToken);
+    });
+  }
 
   let currentUser = null;
   let storeId = null;
@@ -1206,6 +1319,10 @@
       receiptFooter: "毎度ありがとうございます。",
       staffPass: "",
       stockEnabled: false,
+      pointCardEnabled: false,
+      balanceCardEnabled: false,
+      mobileOrderQrToken: "",
+      pointRatePercent: 1,
       staffTrackingEnabled: false,
       printCashierOnReceipt: true,
       soundSettings: {
@@ -1243,8 +1360,17 @@
   // 会計ステート
   let selectedPayment = "現金";
   let cashDeposit = 0;
+  let splitPayments = [];
+  let isSplitPaymentOpen = false;
+  let isChargeCompleteFlow = false;
+  let activeMember = null;
   let lastCompletedSale = null;
   let lastCompletedRefund = null;
+  let lastChargeReceipt = null;
+
+  // バーコードスキャナステート
+  let barcodeScanTarget = null;
+  let html5QrCodeInstance = null;
 
   function generateTransactionId() {
     const now = new Date();
@@ -1330,9 +1456,18 @@
       if (typeof storeData.printCashierOnReceipt !== "boolean") {
         storeData.printCashierOnReceipt = true;
       }
+      if (!storeData.mobileOrderQrToken) {
+        storeData.mobileOrderQrToken = Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+        await setDoc(docRef, { mobileOrderQrToken: storeData.mobileOrderQrToken }, { merge: true });
+      }
     } else {
       storeData = createDefaultStoreData();
+      storeData.mobileOrderQrToken = Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
       await setDoc(docRef, storeData);
+    }
+    const tokenEl = document.getElementById("current-mobile-qr-token-text");
+    if (tokenEl) {
+      tokenEl.textContent = `現在のQRトークン: ${storeData.mobileOrderQrToken}`;
     }
     isSelfCheckout = Boolean(storeData.isSelfCheckout && String(storeData.staffPass || "").trim());
     if (isSelfCheckout) {
@@ -1949,6 +2084,7 @@
     storeData.isSelfCheckout = true;
     document.getElementById("staff-header-controls").classList.add("hidden");
     document.getElementById("self-header-controls").classList.remove("hidden");
+    document.getElementById("toggle-left-camera-btn")?.classList.remove("hidden");
     syncPosActionStatesForMode();
     renderCart();
     await saveStoreData();
@@ -2018,12 +2154,111 @@
   // =========================================================================
   // 9. 会計処理・お釣り計算・レシート/領収書/払戻伝票印刷
   // =========================================================================
-  window.openCheckoutModal = () => {
+  function getSplitPaidTotal() {
+    return splitPayments.reduce((sum, p) => sum + Math.round(Number(p.amount || 0)), 0);
+  }
+
+  function getRemainingTotal() {
+    const grand = calculateTotals().grandTotal;
+    return Math.max(0, grand - getSplitPaidTotal());
+  }
+
+  window.clearSplitPayments = () => {
+    splitPayments = [];
+    const inp = document.getElementById("split-payment-amount-input");
+    if (inp) inp.value = "";
+    cashDeposit = 0;
+    updateCheckoutDisplay();
+  };
+
+  window.addSplitPayment = () => {
+    if (!selectedPayment) return alert("支払い方法を選択してください");
+    if (isSelfCheckout && !isPaymentAllowedInSelfCheckout(selectedPayment)) {
+      return alert("この支払い方法はセルフレジでは利用できません");
+    }
+    const remaining = getRemainingTotal();
+    if (remaining <= 0) return alert("すでに合計金額に達しています");
+
+    const rawInput = document.getElementById("split-payment-amount-input")?.value.trim();
+    const inputAmt = rawInput ? Math.round(Number(rawInput)) : remaining;
+    if (!Number.isFinite(inputAmt) || inputAmt <= 0) {
+      return alert("正しい金額を入力してください");
+    }
+
+    if (selectedPayment === "現金") {
+      const targetCharge = Math.min(remaining, inputAmt);
+      const tendered = cashDeposit > 0 ? Math.max(cashDeposit, targetCharge) : targetCharge;
+      const change = Math.max(0, tendered - targetCharge);
+      splitPayments.push({
+        method: selectedPayment,
+        amount: targetCharge,
+        tendered,
+        change
+      });
+      cashDeposit = 0;
+    } else if (selectedPayment === "カード残高利用") {
+      if (!activeMember || !storeData.balanceCardEnabled) return alert("残高カードが利用できません");
+      const maxBal = Math.round(Number(activeMember.balance || 0));
+      const alreadyBal = splitPayments.filter(p => p.method === "カード残高利用").reduce((s, p) => s + p.amount, 0);
+      const availBal = Math.max(0, maxBal - alreadyBal);
+      if (inputAmt > remaining || inputAmt > availBal) {
+        return alert(`カード残高利用可能額（¥${Math.min(remaining, availBal).toLocaleString()}）を超えています`);
+      }
+      splitPayments.push({ method: selectedPayment, amount: inputAmt, tendered: inputAmt, change: 0 });
+    } else if (selectedPayment === "ポイント利用") {
+      if (!activeMember || !storeData.pointCardEnabled) return alert("ポイントカードが利用できません");
+      const maxPt = Math.round(Number(activeMember.points || 0));
+      const alreadyPt = splitPayments.filter(p => p.method === "ポイント利用").reduce((s, p) => s + p.amount, 0);
+      const availPt = Math.max(0, maxPt - alreadyPt);
+      if (inputAmt > remaining || inputAmt > availPt) {
+        return alert(`利用可能ポイント（${Math.min(remaining, availPt).toLocaleString()} pt）を超えています`);
+      }
+      splitPayments.push({ method: selectedPayment, amount: inputAmt, tendered: inputAmt, change: 0 });
+    } else {
+      if (inputAmt > remaining) {
+        return alert(`現金以外の併用額は残り金額（¥${remaining.toLocaleString()}）以下にしてください`);
+      }
+      splitPayments.push({
+        method: selectedPayment,
+        amount: inputAmt,
+        tendered: inputAmt,
+        change: 0
+      });
+    }
+
+    if (document.getElementById("split-payment-amount-input")) {
+      document.getElementById("split-payment-amount-input").value = "";
+    }
+    updateCheckoutDisplay();
+  };
+
+  window.removeSplitPayment = (idx) => {
+    splitPayments.splice(idx, 1);
+    updateCheckoutDisplay();
+  };
+
+  window.openCheckoutModal = async () => {
     if (isRefundMode) {
       return window.processSelectedRefund();
     }
+    if (isMobileQrInvalidated) {
+      applyMobileQrLockState(storeData.mobileOrderQrToken);
+      return alert("QRコードが無効化されています。新しいQRコードを読み込み直してください。");
+    }
     if (cart.length === 0) return alert("商品が選択されていません");
-    const methods = ["現金", ...storeData.paymentMethods];
+    if (isPosLeftCameraActive) {
+      isPosLeftCameraActive = false;
+      syncPosLeftViewMode();
+      await stopPosLeftCamera();
+    }
+    await window.closeBarcodeScannerModal();
+    const memberPayMethods = activeMember
+      ? [
+          ...(storeData.balanceCardEnabled ? ["カード残高利用"] : []),
+          ...(storeData.pointCardEnabled ? ["ポイント利用"] : [])
+        ]
+      : [];
+    const methods = ["現金", ...storeData.paymentMethods, ...memberPayMethods];
     if (isSelfCheckout) {
       const firstAllowed = methods.find(m => isPaymentAllowedInSelfCheckout(m));
       selectedPayment = firstAllowed || "";
@@ -2031,6 +2266,14 @@
       selectedPayment = "現金";
     }
     cashDeposit = 0;
+    splitPayments = [];
+    isSplitPaymentOpen = false;
+    isChargeCompleteFlow = false;
+    const nextBtn = document.getElementById("complete-next-action-btn");
+    if (nextBtn) nextBtn.textContent = "次の会計へ";
+    if (document.getElementById("split-payment-amount-input")) {
+      document.getElementById("split-payment-amount-input").value = "";
+    }
     renderPaymentMethods();
     updateCheckoutDisplay();
     document.getElementById("checkout-modal").classList.remove("hidden");
@@ -2043,10 +2286,63 @@
     updateCheckoutDisplay();
   };
 
+  function renderMemberCheckoutStatus() {
+    const el = document.getElementById("member-checkout-status");
+    const chargeBtn = document.querySelector("#checkout-modal button[onclick*='openMemberChargeFlow']");
+    const qrBtn = document.querySelector("#checkout-modal button[onclick*=\"openBarcodeScannerModal('member')\"]");
+    const isAnyCardEnabled = Boolean(storeData.pointCardEnabled || storeData.balanceCardEnabled);
+
+    if (chargeBtn) {
+      chargeBtn.classList.toggle("hidden", !storeData.balanceCardEnabled);
+    }
+    if (qrBtn) {
+      qrBtn.classList.toggle("hidden", !isAnyCardEnabled);
+    }
+    if (!el) return;
+    if (!isAnyCardEnabled) {
+      el.classList.add("hidden");
+      return;
+    }
+    el.classList.remove("hidden");
+    if (!activeMember) {
+      el.textContent = "会員カード: 未読取（QR読取で残高決済＆ポイント付与が可能）";
+      return;
+    }
+    const parts = [`会員: ${activeMember.name} (${activeMember.memberCode})`];
+    if (storeData.balanceCardEnabled) {
+      parts.push(`残高: ¥${Math.round(Number(activeMember.balance || 0)).toLocaleString()}`);
+    }
+    if (storeData.pointCardEnabled) {
+      const rate = Number(storeData.pointRatePercent ?? 1);
+      const estPt = Math.floor((calculateTotals().grandTotal * rate) / 100);
+      parts.push(`ポイント: ${Math.round(Number(activeMember.points || 0)).toLocaleString()} pt (付与予定: +${estPt} pt)`);
+    }
+    el.textContent = parts.join(" / ");
+  }
+
+  function syncSplitUiVisibility() {
+    const showSplit = isSplitPaymentOpen || splitPayments.length > 0;
+    document.getElementById("split-summary-area")?.classList.toggle("hidden", !showSplit);
+    document.getElementById("split-input-area")?.classList.toggle("hidden", !showSplit);
+  }
+
+  window.toggleSplitPaymentMode = () => {
+    isSplitPaymentOpen = !isSplitPaymentOpen;
+    syncSplitUiVisibility();
+  };
+
   function renderPaymentMethods() {
+    renderMemberCheckoutStatus();
+    syncSplitUiVisibility();
     const container = document.getElementById("payment-method-buttons");
     container.innerHTML = "";
-    const methods = ["現金", ...storeData.paymentMethods];
+    const memberPayMethods = activeMember
+      ? [
+          ...(storeData.balanceCardEnabled ? ["カード残高利用"] : []),
+          ...(storeData.pointCardEnabled ? ["ポイント利用"] : [])
+        ]
+      : [];
+    const methods = ["現金", ...storeData.paymentMethods, ...memberPayMethods];
 
     methods.forEach(m => {
       const isDisabled = isSelfCheckout && !isPaymentAllowedInSelfCheckout(m);
@@ -2070,7 +2366,27 @@
 
   function updateCheckoutDisplay() {
     const totals = calculateTotals();
+    const splitPaid = getSplitPaidTotal();
+    const remaining = Math.max(0, totals.grandTotal - splitPaid);
+    const splitChangeTotal = splitPayments.reduce((sum, p) => sum + Math.round(Number(p.change || 0)), 0);
+
     document.getElementById("pay-modal-total").textContent = `¥${totals.grandTotal.toLocaleString()}`;
+    document.getElementById("pay-modal-split-paid").textContent = `¥${splitPaid.toLocaleString()}`;
+    document.getElementById("pay-modal-remaining").textContent = `¥${remaining.toLocaleString()}`;
+
+    const listEl = document.getElementById("split-payments-list");
+    if (listEl) {
+      if (splitPayments.length === 0) {
+        listEl.innerHTML = "";
+      } else {
+        listEl.innerHTML = splitPayments.map((p, idx) => `
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:2px 0; border-top:1px dashed #bbb;">
+            <span>${escapeHtml(p.method)}: ¥${Number(p.amount).toLocaleString()}${p.change > 0 ? ` (釣¥${Number(p.change).toLocaleString()})` : ""}</span>
+            <button type="button" class="danger" style="padding:1px 6px; font-size:11px;" onclick="removeSplitPayment(${idx})">取消</button>
+          </div>
+        `).join("");
+      }
+    }
 
     const isCash = selectedPayment === "現金";
     document.getElementById("cash-calc-area").classList.toggle("hidden", !isCash);
@@ -2078,8 +2394,8 @@
 
     if (isCash) {
       document.getElementById("pay-modal-deposit").textContent = `¥${cashDeposit.toLocaleString()}`;
-      const change = Math.max(0, cashDeposit - totals.grandTotal);
-      document.getElementById("pay-modal-change").textContent = `¥${change.toLocaleString()}`;
+      const currentChange = cashDeposit > 0 ? Math.max(0, cashDeposit - remaining) : splitChangeTotal;
+      document.getElementById("pay-modal-change").textContent = `¥${currentChange.toLocaleString()}`;
     }
   }
 
@@ -2102,27 +2418,77 @@
 
   window.completeCheckout = async () => {
     const totals = calculateTotals();
-    if (selectedPayment === "現金" && cashDeposit < totals.grandTotal) {
-      return alert("お預かり金額が不足しています");
+    const splitPaid = getSplitPaidTotal();
+    const remaining = Math.max(0, totals.grandTotal - splitPaid);
+
+    let finalPayments = [...splitPayments];
+    let totalDeposit = splitPayments.reduce((s, p) => s + Math.round(Number(p.tendered ?? p.amount ?? 0)), 0);
+    let totalChange = splitPayments.reduce((s, p) => s + Math.round(Number(p.change || 0)), 0);
+
+    if (remaining > 0) {
+      if (!selectedPayment) {
+        return alert("残額の支払い方法を選択してください");
+      }
+      if (selectedPayment === "現金") {
+        if (cashDeposit < remaining) {
+          return alert("お預かり金額が不足しています");
+        }
+        const chg = cashDeposit - remaining;
+        finalPayments.push({
+          method: "現金",
+          amount: remaining,
+          tendered: cashDeposit,
+          change: chg
+        });
+        totalDeposit += cashDeposit;
+        totalChange += chg;
+      } else {
+        if (cashDeposit > 0 && cashDeposit < remaining) {
+          return alert("入力された金額が残り金額に足りません");
+        }
+        finalPayments.push({
+          method: selectedPayment,
+          amount: remaining,
+          tendered: remaining,
+          change: 0
+        });
+        totalDeposit += remaining;
+      }
     }
 
     playCheckoutSound();
 
-    const deposit = selectedPayment === "現金" ? cashDeposit : totals.grandTotal;
-    const change = selectedPayment === "現金" ? (cashDeposit - totals.grandTotal) : 0;
+    const transactionId = generateTransactionId();
+    const paymentLabel = finalPayments.length > 1
+      ? finalPayments.map(p => `${p.method}(¥${Number(p.amount).toLocaleString()})`).join(" + ")
+      : (finalPayments[0]?.method || selectedPayment);
     const cashierName = getActiveCashierName();
 
-    if (!isTestMode && storeData.stockEnabled) {
-      cart.forEach(item => {
-        const prod = storeData.products.find(p => p.id === item.productId);
-        if (prod) {
-          prod.stock = Math.max(0, prod.stock - item.qty);
-        }
-      });
-      await saveStoreData();
+    const balanceUsed = storeData.balanceCardEnabled
+      ? finalPayments.filter(p => p.method === "カード残高利用").reduce((s, p) => s + Math.round(Number(p.amount || 0)), 0)
+      : 0;
+    const pointsUsed = storeData.pointCardEnabled
+      ? finalPayments.filter(p => p.method === "ポイント利用").reduce((s, p) => s + Math.round(Number(p.amount || 0)), 0)
+      : 0;
+    const pointRate = Number(storeData.pointRatePercent ?? 1);
+    const earnedPoints = (activeMember && storeData.pointCardEnabled)
+      ? Math.floor((totals.grandTotal * pointRate) / 100)
+      : 0;
+
+    if (!isTestMode && activeMember) {
+      if (balanceUsed > Math.round(Number(activeMember.balance || 0))) {
+        return alert("カード残高が不足しています");
+      }
+      if (pointsUsed > Math.round(Number(activeMember.points || 0))) {
+        return alert("ポイント残高が不足しています");
+      }
     }
 
-    const transactionId = generateTransactionId();
+    const prevBalance = activeMember ? Math.round(Number(activeMember.balance || 0)) : 0;
+    const prevPoints = activeMember ? Math.round(Number(activeMember.points || 0)) : 0;
+    const nextBalance = activeMember ? (prevBalance - balanceUsed) : 0;
+    const nextPoints = activeMember ? (prevPoints - pointsUsed + earnedPoints) : 0;
+
     const saleRecord = {
       transactionId,
       items: JSON.parse(JSON.stringify(cart)),
@@ -2131,9 +2497,19 @@
       grandTotal: totals.grandTotal,
       tax: totals.tax,
       taxBreakdown: totals.taxBreakdown,
-      paymentMethod: selectedPayment,
-      deposit: deposit,
-      change: change,
+      paymentMethod: paymentLabel,
+      payments: finalPayments,
+      deposit: totalDeposit,
+      change: totalChange,
+      memberCode: activeMember ? activeMember.memberCode : "",
+      memberName: activeMember ? activeMember.name : "",
+      pointCardEnabled: Boolean(storeData.pointCardEnabled),
+      balanceCardEnabled: Boolean(storeData.balanceCardEnabled),
+      earnedPoints,
+      pointsUsed,
+      totalPointsAfter: nextPoints,
+      balanceUsed,
+      totalBalanceAfter: nextBalance,
       cashier: cashierName,
       isTest: isTestMode,
       addressee: (document.getElementById("receipt-addressee")?.value || "").trim() || "上様",
@@ -2142,25 +2518,73 @@
       createdAt: new Date().toISOString()
     };
 
-    if (!isTestMode) {
-      const salesCol = collection(db, "stores", storeId, "sales");
-      const docRef = await addDoc(salesCol, saleRecord);
-      saleRecord.id = docRef.id;
+    lastCompletedSale = saleRecord;
 
-      for (const orderId of loadedOrderDocIds) {
-        const orderRef = doc(db, "stores", storeId, "orders", orderId);
-        await updateDoc(orderRef, { status: "completed", completedAt: new Date().toISOString() });
+    try {
+      if (!isTestMode && storeData.stockEnabled) {
+        cart.forEach(item => {
+          const prod = storeData.products.find(p => p.id === item.productId);
+          if (prod) {
+            prod.stock = Math.max(0, prod.stock - item.qty);
+          }
+        });
+        await saveStoreData();
       }
+
+      if (!isTestMode) {
+        const salesCol = collection(db, "stores", storeId, "sales");
+        const docRef = await addDoc(salesCol, saleRecord);
+        saleRecord.id = docRef.id;
+
+        for (const orderId of loadedOrderDocIds) {
+          const orderRef = doc(db, "stores", storeId, "orders", orderId);
+          await updateDoc(orderRef, { status: "completed", completedAt: new Date().toISOString() });
+        }
+      }
+    } catch (err) {
+      console.error("[completeCheckout] sales save error:", err);
     }
 
-    closeModal("checkout-modal");
+    const checkoutModal = document.getElementById("checkout-modal");
+    if (checkoutModal) checkoutModal.classList.add("hidden");
 
-    lastCompletedSale = saleRecord;
-    document.getElementById("complete-summary-text").textContent =
-      `${isTestMode ? "[テストモード] " : ""}合計: ¥${totals.grandTotal.toLocaleString()} / お釣り: ¥${change.toLocaleString()}`;
-    document.getElementById("checkout-complete-modal").classList.remove("hidden");
+    const summaryEl = document.getElementById("complete-summary-text");
+    if (summaryEl) {
+      summaryEl.textContent =
+        `${isTestMode ? "[テストモード] " : ""}合計: ¥${totals.grandTotal.toLocaleString()} / お釣り: ¥${Math.max(0, totalChange).toLocaleString()}`;
+    }
+    const changeDispEl = document.getElementById("complete-change-display");
+    if (changeDispEl) {
+      changeDispEl.textContent = `¥${Math.max(0, totalChange).toLocaleString()}`;
+    }
+    const completeModal = document.getElementById("checkout-complete-modal");
+    if (completeModal) {
+      completeModal.classList.remove("hidden");
+      completeModal.style.display = "flex";
+    }
 
     clearCart();
+
+    if (!isTestMode && activeMember) {
+      try {
+        await updateDoc(doc(db, "stores", storeId, "members", activeMember.id), {
+          balance: nextBalance,
+          points: nextPoints
+        });
+        await addDoc(collection(db, "stores", storeId, "members", activeMember.id, "logs"), {
+          location: storeData.name,
+          detail: `会計 (${transactionId})`,
+          type: "商品会計",
+          balanceDelta: -balanceUsed,
+          pointsDelta: earnedPoints - pointsUsed,
+          createdAt: new Date().toISOString()
+        });
+        activeMember.balance = nextBalance;
+        activeMember.points = nextPoints;
+      } catch (err) {
+        console.error("[completeCheckout] member update error:", err);
+      }
+    }
   };
 
   window.printDocument = (sale, docType) => {
@@ -2223,6 +2647,17 @@
       <div class="receipt-row"><span>支払方法</span><span>${escapeHtml(sale.paymentMethod)}</span></div>
       <div class="receipt-row"><span>お預かり</span><span>¥${Number(sale.deposit || 0).toLocaleString()}</span></div>
       <div class="receipt-row"><span>お釣り</span><span>¥${Number(sale.change || 0).toLocaleString()}</span></div>
+      ${sale.memberCode ? `
+        <div class="receipt-line"></div>
+        <div>会員: ${escapeHtml(sale.memberName)} (${escapeHtml(sale.memberCode)})</div>
+        ${sale.pointCardEnabled ? `
+          <div>今回付与ポイント: +${Number(sale.earnedPoints || 0).toLocaleString()} pt${sale.pointsUsed ? ` / 利用: -${Number(sale.pointsUsed).toLocaleString()} pt` : ""}</div>
+          <div>累計ポイント: ${Number(sale.totalPointsAfter || 0).toLocaleString()} pt</div>
+        ` : ""}
+        ${sale.balanceCardEnabled ? `
+          <div>カード残高: ¥${Number(sale.totalBalanceAfter || 0).toLocaleString()}${sale.balanceUsed ? ` (今回利用: -¥${Number(sale.balanceUsed).toLocaleString()})` : ""}</div>
+        ` : ""}
+      ` : ""}
       <div class="receipt-line"></div>
       <div class="receipt-center">${escapeHtml(storeData.receiptFooter)}</div>
       ${testBanner}
@@ -2289,17 +2724,204 @@
   };
 
   window.goToNextCheckout = () => {
+    const wasChargeFlow = isChargeCompleteFlow;
     lastCompletedSale = null;
-    closeModal("checkout-complete-modal");
+    isChargeCompleteFlow = false;
+    const nextBtn = document.getElementById("complete-next-action-btn");
+    if (nextBtn) nextBtn.textContent = "次の会計へ";
+
+    const completeModal = document.getElementById("checkout-complete-modal");
+    if (completeModal) {
+      completeModal.classList.add("hidden");
+      completeModal.style.display = "";
+    }
+
+    if (wasChargeFlow) {
+      renderCart();
+      renderPaymentMethods();
+      updateCheckoutDisplay();
+      const checkoutModal = document.getElementById("checkout-modal");
+      if (checkoutModal) {
+        checkoutModal.classList.remove("hidden");
+        checkoutModal.style.display = "flex";
+      }
+      return;
+    }
+
+    activeMember = null;
     clearCart();
   };
+
+  async function loadMemberByCodeForPos(code) {
+    const snap = await getDocs(query(collection(db, "stores", storeId, "members"), where("memberCode", "==", code)));
+    if (snap.empty) {
+      return alert(`会員番号「${code}」が見つかりません。`);
+    }
+    const d = snap.docs[0];
+    const data = d.data();
+    if (data.suspended) {
+      return alert("この会員カードは一時停止中です。");
+    }
+    activeMember = { id: d.id, ...data };
+    syncSplitUiVisibility();
+    renderPaymentMethods();
+    updateCheckoutDisplay();
+  }
+
+  window.openMemberChargeFlow = async () => {
+    if (!activeMember) {
+      await window.openBarcodeScannerModal("member");
+      if (!activeMember) return;
+    }
+    document.getElementById("charge-member-info").textContent =
+      `会員: ${activeMember.name} (${activeMember.memberCode}) / 現在残高: ¥${Math.round(Number(activeMember.balance || 0)).toLocaleString()}`;
+    const inp = document.getElementById("charge-amount-input");
+    if (inp) inp.value = "";
+    const chargeModal = document.getElementById("member-charge-modal");
+    if (chargeModal) {
+      chargeModal.classList.remove("hidden");
+      chargeModal.style.display = "flex";
+    }
+  };
+
+  window.appendChargeDigit = (d) => {
+    const inp = document.getElementById("charge-amount-input");
+    if (!inp) return;
+    inp.value = `${inp.value || ""}${d}`;
+  };
+
+  window.clearChargeDigit = () => {
+    const inp = document.getElementById("charge-amount-input");
+    if (!inp) return;
+    inp.value = "";
+  };
+
+  window.backspaceChargeDigit = () => {
+    const inp = document.getElementById("charge-amount-input");
+    if (!inp) return;
+    inp.value = String(inp.value || "").slice(0, -1);
+  };
+
+  window.setChargeAmount = (amt) => {
+    document.getElementById("charge-amount-input").value = String(amt);
+  };
+
+  window.executeMemberCharge = async () => {
+    if (!activeMember) return alert("会員カードを読み取ってください");
+    const amt = Math.round(Number(document.getElementById("charge-amount-input").value));
+    if (!Number.isFinite(amt) || amt <= 0) return alert("チャージ金額を入力してください");
+
+    const txId = generateTransactionId();
+    const prevBal = Math.round(Number(activeMember.balance || 0));
+    const nextBal = prevBal + amt;
+
+    if (!isTestMode) {
+      await updateDoc(doc(db, "stores", storeId, "members", activeMember.id), { balance: nextBal });
+      await addDoc(collection(db, "stores", storeId, "members", activeMember.id, "logs"), {
+        location: storeData.name,
+        detail: `残高チャージ (${txId})`,
+        type: "残高チャージ",
+        balanceDelta: amt,
+        pointsDelta: 0,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    activeMember.balance = nextBal;
+    lastChargeReceipt = {
+      transactionId: txId,
+      memberCode: activeMember.memberCode,
+      memberName: activeMember.name,
+      chargeAmount: amt,
+      nextBalance: nextBal,
+      cashier: getActiveCashierName(),
+      createdAt: new Date().toISOString()
+    };
+
+    const chargeModal = document.getElementById("member-charge-modal");
+    if (chargeModal) {
+      chargeModal.classList.add("hidden");
+      chargeModal.style.display = "";
+    }
+    lastCompletedSale = {
+      transactionId: txId,
+      items: [{ name: `会員残高チャージ (${activeMember.memberCode})`, price: amt, qty: 1, taxRate: 0 }],
+      subtotal: amt,
+      totalDiscount: 0,
+      grandTotal: amt,
+      tax: 0,
+      taxBreakdown: {},
+      paymentMethod: "現金",
+      payments: [{ method: "現金", amount: amt, tendered: amt, change: 0 }],
+      deposit: amt,
+      change: 0,
+      memberCode: activeMember.memberCode,
+      memberName: activeMember.name,
+      earnedPoints: 0,
+      cashier: getActiveCashierName(),
+      isTest: isTestMode,
+      addressee: "上様",
+      proviso: "チャージ代として",
+      refunded: false,
+      createdAt: new Date().toISOString()
+    };
+    const summaryEl = document.getElementById("complete-summary-text");
+    if (summaryEl) {
+      summaryEl.textContent = `${isTestMode ? "[テストモード] " : ""}チャージ完了: ¥${amt.toLocaleString()} / お釣り: ¥0`;
+    }
+    const changeDispEl = document.getElementById("complete-change-display");
+    if (changeDispEl) {
+      changeDispEl.textContent = "¥0";
+    }
+    isChargeCompleteFlow = true;
+    const nextBtn = document.getElementById("complete-next-action-btn");
+    if (nextBtn) nextBtn.textContent = "商品の会計へ";
+    const completeModal = document.getElementById("checkout-complete-modal");
+    if (completeModal) {
+      completeModal.classList.remove("hidden");
+      completeModal.style.display = "flex";
+    }
+  };
+
+  function printChargeDocument(chargeData, docType) {
+    const area = document.getElementById("print-area");
+    const title = docType === "invoice" ? "チャージ領収書" : "チャージレシート";
+    area.innerHTML = `
+      <div class="receipt-center receipt-bold" style="font-size:16px;">${title}</div>
+      <div class="receipt-center receipt-bold">${escapeHtml(storeData.name)}</div>
+      <div class="receipt-line"></div>
+      <div>処理ID: ${escapeHtml(chargeData.transactionId)}</div>
+      <div>日時: ${new Date(chargeData.createdAt).toLocaleString("ja-JP")}</div>
+      <div>会員: ${escapeHtml(chargeData.memberName)} (${escapeHtml(chargeData.memberCode)})</div>
+      <div class="receipt-line"></div>
+      <div class="receipt-row receipt-bold"><span>チャージ金額</span><span>¥${Number(chargeData.chargeAmount).toLocaleString()}</span></div>
+      <div class="receipt-row"><span>チャージ後残高</span><span>¥${Number(chargeData.nextBalance).toLocaleString()}</span></div>
+      <div class="receipt-line"></div>
+      <div class="receipt-center">※商品代金とは別発行です</div>
+    `;
+    window.print();
+  }
 
   // =========================================================================
   // 10. 外部QRコード予約システム（お客様側＆レジ側連携）
   // =========================================================================
+  window.renewMobileOrderQr = async () => {
+    if (!confirm("モバイル注文のQRコードを更新しますか？現在このQRコードを開いている端末は注文できなくなります。")) return;
+    storeData.mobileOrderQrToken = Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+    await saveStoreData();
+    const tokenEl = document.getElementById("current-mobile-qr-token-text");
+    if (tokenEl) {
+      tokenEl.textContent = `現在のQRトークン: ${storeData.mobileOrderQrToken}`;
+    }
+    if (typeof window.showCustomerQrModal === "function") {
+      window.showCustomerQrModal();
+    }
+  };
+
   window.showCustomerQrModal = () => {
     const baseUrl = window.location.href.split("?")[0];
-    const orderUrl = `${baseUrl}?mode=order&store=${storeId}`;
+    const token = storeData.mobileOrderQrToken || "";
+    const orderUrl = `${baseUrl}?mode=order&store=${storeId}${token ? `&qr=${encodeURIComponent(token)}` : ""}`;
     const qrContainer = document.getElementById("qrcode-container");
     qrContainer.innerHTML = "";
     new QRCode(qrContainer, {
@@ -2877,13 +3499,14 @@
       return alert("商品名・価格・在庫数・消費税率（0〜100%）を正しく入力してください");
     }
 
+    const barcode = (document.getElementById("prod-barcode")?.value || "").trim();
     if (id) {
       const target = storeData.products.find(p => p.id === id);
-      if (target) Object.assign(target, { name, price, category, stock, taxRate });
+      if (target) Object.assign(target, { name, price, category, stock, taxRate, barcode });
     } else {
       storeData.products.push({
         id: "prod_" + Date.now(),
-        name, price, category, stock, taxRate
+        name, price, category, stock, taxRate, barcode
       });
     }
 
@@ -2892,6 +3515,7 @@
     document.getElementById("prod-price").value = "";
     document.getElementById("prod-cat").value = "";
     document.getElementById("prod-stock").value = "";
+    if (document.getElementById("prod-barcode")) document.getElementById("prod-barcode").value = "";
     setProductTaxFormValue(10);
 
     await saveStoreData();
@@ -2906,6 +3530,7 @@
     document.getElementById("prod-price").value = p.price;
     document.getElementById("prod-cat").value = p.category;
     document.getElementById("prod-stock").value = p.stock;
+    if (document.getElementById("prod-barcode")) document.getElementById("prod-barcode").value = p.barcode || "";
     setProductTaxFormValue(p.taxRate);
   };
 
@@ -3201,7 +3826,11 @@
   function renderAdminPayments() {
     const ul = document.getElementById("admin-payment-list");
     ul.innerHTML = "";
-    const allMethods = ["現金", ...storeData.paymentMethods];
+    const cardMethods = [
+      ...(storeData.balanceCardEnabled ? ["カード残高利用"] : []),
+      ...(storeData.pointCardEnabled ? ["ポイント利用"] : [])
+    ];
+    const allMethods = ["現金", ...storeData.paymentMethods, ...cardMethods];
 
     allMethods.forEach((m, idx) => {
       const isCash = idx === 0;
@@ -3584,6 +4213,9 @@
     document.getElementById("set-store-phone").value = storeData.phone || "";
     document.getElementById("set-invoice-no").value = storeData.invoiceNo || "";
     document.getElementById("set-receipt-footer").value = storeData.receiptFooter || "";
+    document.getElementById("set-point-rate").value = storeData.pointRatePercent ?? 1;
+    document.getElementById("set-point-card-enabled").checked = Boolean(storeData.pointCardEnabled);
+    document.getElementById("set-balance-card-enabled").checked = Boolean(storeData.balanceCardEnabled);
     document.getElementById("set-staff-pass").value = storeData.staffPass || "";
   }
 
@@ -3593,6 +4225,11 @@
     storeData.phone = document.getElementById("set-store-phone").value.trim();
     storeData.invoiceNo = document.getElementById("set-invoice-no").value.trim();
     storeData.receiptFooter = document.getElementById("set-receipt-footer").value.trim();
+    const rateVal = Number(document.getElementById("set-point-rate").value);
+    storeData.pointRatePercent = Number.isFinite(rateVal) && rateVal >= 0 ? rateVal : 1;
+    storeData.pointCardEnabled = Boolean(document.getElementById("set-point-card-enabled")?.checked);
+    storeData.balanceCardEnabled = Boolean(document.getElementById("set-balance-card-enabled")?.checked);
+    syncMemberCardUiVisibility();
     storeData.staffPass = document.getElementById("set-staff-pass").value.trim();
     await saveStoreData();
     alert("店舗設定を保存しました。");
@@ -3646,7 +4283,172 @@
     lastTouchEndTime = now;
   }, { passive: false });
 
+  window.addProductByBarcode = (rawCode) => {
+    const code = String(rawCode || "").trim();
+    if (!code) return;
+    const found = storeData.products.find(p => String(p.barcode || "").trim() === code);
+    if (!found) {
+      return alert(`バーコード「${code}」に一致する商品が見つかりません。`);
+    }
+    addToCart(found);
+    const inp = document.getElementById("pos-barcode-input");
+    if (inp) inp.value = "";
+  };
+
+  window.handlePosBarcodeKeydown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      window.addProductByBarcode(e.target.value);
+    }
+  };
+
+  window.openBarcodeScannerModal = async (target) => {
+    barcodeScanTarget = target;
+    document.getElementById("barcode-scanner-title").textContent =
+      target === "product" ? "商品バーコード読み取り" : "POSバーコード読み取り";
+    document.getElementById("manual-barcode-input").value = "";
+    document.getElementById("barcode-scanner-modal").classList.remove("hidden");
+
+    if (window.Html5Qrcode) {
+      try {
+        if (!html5QrCodeInstance) {
+          html5QrCodeInstance = new Html5Qrcode("barcode-reader-box");
+        }
+        await html5QrCodeInstance.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 240, height: 140 } },
+          (decodedText) => {
+            applyScannedBarcode(decodedText);
+          },
+          () => {}
+        );
+      } catch (err) {
+        console.log("カメラ起動スキップ:", err);
+      }
+    }
+  };
+
+  async function stopBarcodeCamera() {
+    if (html5QrCodeInstance && html5QrCodeInstance.isScanning) {
+      try {
+        await html5QrCodeInstance.stop();
+      } catch (e) {
+        console.log("カメラ停止スキップ:", e);
+      }
+    }
+  }
+
+  window.closeBarcodeScannerModal = async () => {
+    await stopBarcodeCamera();
+    barcodeScanTarget = null;
+    document.getElementById("barcode-scanner-modal").classList.add("hidden");
+  };
+
+  async function applyScannedBarcode(code) {
+    const trimmed = String(code || "").trim();
+    if (!trimmed) return;
+    const target = barcodeScanTarget;
+    await window.closeBarcodeScannerModal();
+    if (target === "product") {
+      const prodBarcodeInput = document.getElementById("prod-barcode");
+      if (prodBarcodeInput) prodBarcodeInput.value = trimmed;
+    } else if (target === "pos") {
+      window.addProductByBarcode(trimmed);
+    } else if (target === "member") {
+      await loadMemberByCodeForPos(trimmed);
+    }
+  }
+
+  window.confirmManualBarcode = () => {
+    applyScannedBarcode(document.getElementById("manual-barcode-input").value);
+  };
+
+  window.handleManualBarcodeKeydown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      window.confirmManualBarcode();
+    }
+  };
+
+  let posLeftQrInstance = null;
+  let lastPosScanTime = 0;
+  let isPosLeftCameraActive = false;
+
+  function syncPosLeftViewMode() {
+    const camSection = document.getElementById("pos-left-camera-section");
+    const catTabs = document.getElementById("category-tabs");
+    const prodGrid = document.getElementById("product-grid");
+    const toggleBtn = document.getElementById("toggle-left-camera-btn");
+
+    camSection?.classList.toggle("hidden", !isPosLeftCameraActive);
+    catTabs?.classList.toggle("hidden", isPosLeftCameraActive);
+    prodGrid?.classList.toggle("hidden", isPosLeftCameraActive);
+
+    if (toggleBtn) {
+      toggleBtn.textContent = isPosLeftCameraActive ? "商品一覧" : "バーコード読取";
+    }
+  }
+
+  async function stopPosLeftCamera() {
+    if (posLeftQrInstance && posLeftQrInstance.isScanning) {
+      try {
+        await posLeftQrInstance.stop();
+      } catch (e) {
+        console.log("POS左カメラ停止スキップ:", e);
+      }
+    }
+  }
+
+  async function startPosLeftCamera() {
+    if (!window.Html5Qrcode) return;
+    const box = document.getElementById("pos-left-camera-box");
+    if (!box) return;
+    try {
+      if (!posLeftQrInstance) {
+        posLeftQrInstance = new Html5Qrcode("pos-left-camera-box");
+      }
+      if (posLeftQrInstance.isScanning) {
+        await posLeftQrInstance.stop();
+      }
+      await posLeftQrInstance.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 220, height: 140 } },
+        (decodedText) => {
+          const now = Date.now();
+          if (now - lastPosScanTime < 1200) return;
+          lastPosScanTime = now;
+          window.addProductByBarcode(decodedText);
+        },
+        () => {}
+      );
+    } catch (e) {
+      console.log("POS左カメラ起動スキップ:", e);
+    }
+  }
+
+  window.togglePosLeftCameraMode = async () => {
+    if (!isPosLeftCameraActive) {
+      isPosLeftCameraActive = true;
+      syncPosLeftViewMode();
+      await startPosLeftCamera();
+    } else {
+      isPosLeftCameraActive = false;
+      syncPosLeftViewMode();
+      await stopPosLeftCamera();
+    }
+  };
+
+  window.restartPosLeftCamera = () => {
+    if (isPosLeftCameraActive) {
+      startPosLeftCamera();
+    }
+  };
+
   window.closeModal = (id) => {
+    if (id === "barcode-scanner-modal") {
+      window.closeBarcodeScannerModal();
+      return;
+    }
     document.getElementById(id).classList.add("hidden");
   };
 
