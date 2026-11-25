@@ -975,10 +975,14 @@
     <!-- タブ7：担当者（社員登録・現在の担当者・記録ON/OFF） -->
     <div id="tab-staff" class="admin-section">
       <h3>レジ打ち担当者・社員登録</h3>
-      <div style="margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid #ccc;">
+      <div style="margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid #ccc; display: flex; flex-direction: column; gap: 10px;">
         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: bold;">
           <input type="checkbox" id="staff-tracking-enabled" style="width: auto; transform: scale(1.2);" onchange="toggleStaffTrackingEnabled()">
           <span>レジ打ち担当者記録機能を有効にする（デフォルトOFF：OFF時は記録・表示しません）</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: bold;">
+          <input type="checkbox" id="print-cashier-on-receipt" style="width: auto; transform: scale(1.2);" onchange="togglePrintCashierOnReceipt()">
+          <span>レシート・領収書・払戻伝票にレジ打ち担当者を記載する</span>
         </label>
       </div>
 
@@ -1009,7 +1013,9 @@
         効果音・セルフレジ・払い戻し・テストモードを切り替えます。
       </p>
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 20px;">
-        <button type="button" id="admin-sound-toggle-btn" onclick="toggleSound()">効果音: ON</button>
+        <button type="button" id="sound-click-toggle-btn" onclick="toggleIndividualSound('buttonClick')">ボタン操作音: ON</button>
+        <button type="button" id="sound-checkout-toggle-btn" onclick="toggleIndividualSound('checkoutDone')">会計完了音: ON</button>
+        <button type="button" id="sound-staffcall-toggle-btn" onclick="toggleIndividualSound('staffCall')">店員呼出音: ON</button>
         <button type="button" id="admin-self-checkout-btn" onclick="enableSelfCheckoutFromAdmin()">セルフレジ</button>
         <button type="button" class="danger" id="admin-refund-mode-btn" onclick="toggleRefundMode()">払い戻し: OFF</button>
         <button type="button" id="admin-test-mode-btn" onclick="toggleTestMode()">テストモード: OFF</button>
@@ -1026,6 +1032,7 @@
         実行する初期化操作を選択してください（元に戻せない操作があります）。
       </p>
       <div style="display: flex; flex-direction: column; gap: 10px; max-width: 420px; margin: 0 auto;">
+        <button type="button" class="danger" style="padding: 14px;" onclick="deletePendingMobileOrders()">未会計モバイル注文削除（予約のみ削除）</button>
         <button type="button" class="danger" style="padding: 14px;" onclick="deleteAllProductsData()">商品削除（全商品削除）</button>
         <button type="button" class="danger" style="padding: 14px;" onclick="deleteAllSalesData()">販売履歴削除（全履歴削除）</button>
         <button type="button" class="danger solid" style="padding: 14px;" onclick="resetAllStoreData()">初期化（店舗・商品・履歴リセット）</button>
@@ -1102,41 +1109,72 @@
   const audioClick = SOUND_URLS.buttonClick ? new Audio(SOUND_URLS.buttonClick) : null;
   const audioCheckout = SOUND_URLS.checkoutDone ? new Audio(SOUND_URLS.checkoutDone) : null;
   const audioStaffCall = SOUND_URLS.staffCall ? new Audio(SOUND_URLS.staffCall) : null;
-  let isSoundOn = true;
+  function ensureSoundSettings() {
+    if (!storeData.soundSettings || typeof storeData.soundSettings !== "object") {
+      storeData.soundSettings = {
+        buttonClick: true,
+        checkoutDone: true,
+        staffCall: true
+      };
+    }
+    return storeData.soundSettings;
+  }
+
+  function isSoundEnabled(key) {
+    const s = ensureSoundSettings();
+    return Boolean(s[key]);
+  }
 
   function syncSoundButtons() {
-    const label = `効果音: ${isSoundOn ? "ON" : "OFF"}`;
-    const btn1 = document.getElementById("sound-toggle-btn");
-    const btn2 = document.getElementById("admin-sound-toggle-btn");
-    if (btn1) btn1.textContent = label;
-    if (btn2) {
-      btn2.textContent = label;
-      btn2.classList.toggle("primary", isSoundOn);
+    const s = ensureSoundSettings();
+    const clickBtn = document.getElementById("sound-click-toggle-btn");
+    const checkoutBtn = document.getElementById("sound-checkout-toggle-btn");
+    const staffCallBtn = document.getElementById("sound-staffcall-toggle-btn");
+
+    if (clickBtn) {
+      clickBtn.textContent = `ボタン操作音: ${s.buttonClick ? "ON" : "OFF"}`;
+      clickBtn.classList.toggle("primary", Boolean(s.buttonClick));
+    }
+    if (checkoutBtn) {
+      checkoutBtn.textContent = `会計完了音: ${s.checkoutDone ? "ON" : "OFF"}`;
+      checkoutBtn.classList.toggle("primary", Boolean(s.checkoutDone));
+    }
+    if (staffCallBtn) {
+      staffCallBtn.textContent = `店員呼出音: ${s.staffCall ? "ON" : "OFF"}`;
+      staffCallBtn.classList.toggle("primary", Boolean(s.staffCall));
     }
   }
 
   window.playClickSound = () => {
-    if (!isSoundOn || !audioClick) return;
+    if (!isSoundEnabled("buttonClick") || !audioClick) return;
     audioClick.currentTime = 0;
     audioClick.play().catch(e => console.log("音声再生スキップ:", e));
   };
 
   window.playCheckoutSound = () => {
-    if (!isSoundOn || !audioCheckout) return;
+    if (!isSoundEnabled("checkoutDone") || !audioCheckout) return;
     audioCheckout.currentTime = 0;
     audioCheckout.play().catch(e => console.log("音声再生スキップ:", e));
   };
 
   window.playStaffCallSound = () => {
-    if (!isSoundOn || !audioStaffCall) return;
+    if (!isSoundEnabled("staffCall") || !audioStaffCall) return;
     audioStaffCall.currentTime = 0;
     audioStaffCall.play().catch(e => console.log("音声再生スキップ:", e));
   };
 
-  window.toggleSound = () => {
-    isSoundOn = !isSoundOn;
+  window.toggleIndividualSound = async (key) => {
+    const s = ensureSoundSettings();
+    s[key] = !s[key];
     syncSoundButtons();
-    playClickSound();
+    await saveStoreData();
+    if (key === "buttonClick") {
+      playClickSound();
+    } else if (key === "checkoutDone") {
+      playCheckoutSound();
+    } else if (key === "staffCall") {
+      playStaffCallSound();
+    }
   };
 
   document.addEventListener("click", (e) => {
@@ -1169,6 +1207,13 @@
       staffPass: "",
       stockEnabled: false,
       staffTrackingEnabled: false,
+      printCashierOnReceipt: true,
+      soundSettings: {
+        buttonClick: true,
+        checkoutDone: true,
+        staffCall: true
+      },
+      isSelfCheckout: false,
       staffMembers: [],
       currentCashier: "",
       products: [],
@@ -1281,9 +1326,21 @@
       if (!Array.isArray(storeData.selfCheckoutPaymentMethods)) {
         storeData.selfCheckoutPaymentMethods = ["現金", ...(storeData.paymentMethods || [])];
       }
+      ensureSoundSettings();
+      if (typeof storeData.printCashierOnReceipt !== "boolean") {
+        storeData.printCashierOnReceipt = true;
+      }
     } else {
       storeData = createDefaultStoreData();
       await setDoc(docRef, storeData);
+    }
+    isSelfCheckout = Boolean(storeData.isSelfCheckout && String(storeData.staffPass || "").trim());
+    if (isSelfCheckout) {
+      document.getElementById("staff-header-controls").classList.add("hidden");
+      document.getElementById("self-header-controls").classList.remove("hidden");
+    } else {
+      document.getElementById("staff-header-controls").classList.remove("hidden");
+      document.getElementById("self-header-controls").classList.add("hidden");
     }
     updateHeaderAndUI();
   }
@@ -1884,15 +1941,17 @@
   // =========================================================================
   // 8. セルフレジ・店員呼び出しロック機能
   // =========================================================================
-  window.enableSelfCheckout = () => {
+  window.enableSelfCheckout = async () => {
     if (!String(storeData.staffPass || "").trim()) {
       return alert("セルフレジ解除用パスワードが設定されていません。店舗設定からパスワードを入力してください。");
     }
     isSelfCheckout = true;
+    storeData.isSelfCheckout = true;
     document.getElementById("staff-header-controls").classList.add("hidden");
     document.getElementById("self-header-controls").classList.remove("hidden");
     syncPosActionStatesForMode();
     renderCart();
+    await saveStoreData();
   };
 
   window.enableSelfCheckoutFromAdmin = () => {
@@ -1930,8 +1989,9 @@
     document.getElementById("staff-call-notice").classList.remove("hidden");
   };
 
-  function exitSelfCheckoutToStaffMode() {
+  async function exitSelfCheckoutToStaffMode() {
     isSelfCheckout = false;
+    storeData.isSelfCheckout = false;
     document.getElementById("staff-call-overlay").classList.add("hidden");
     document.getElementById("staff-pass-box").classList.add("hidden");
     document.getElementById("staff-call-notice").classList.remove("hidden");
@@ -1939,6 +1999,7 @@
     document.getElementById("self-header-controls").classList.add("hidden");
     syncPosActionStatesForMode();
     renderCart();
+    await saveStoreData();
   }
 
   window.unlockToStaffMode = () => {
@@ -2133,7 +2194,8 @@
       ? sale.taxBreakdown.map(t => `<div class="receipt-row"><span>(内消費税 ${t.rate}%)</span><span>¥${Number(t.taxAmount || 0).toLocaleString()}</span></div>`).join("")
       : `<div class="receipt-row"><span>(内消費税)</span><span>¥${Number(sale.tax || 0).toLocaleString()}</span></div>`;
 
-    const cashierHtml = sale.cashier && sale.cashier !== "記録OFF"
+    const shouldPrintCashier = storeData.printCashierOnReceipt !== false && sale.cashier && sale.cashier !== "記録OFF";
+    const cashierHtml = shouldPrintCashier
       ? `<div>担当: ${escapeHtml(sale.cashier)}</div>`
       : "";
 
@@ -2908,6 +2970,18 @@
     }
   }
 
+  window.deletePendingMobileOrders = async () => {
+    if (!confirm("まだ会計処理されていないモバイル注文（予約のみ）をすべて削除しますか？")) return;
+    const q = query(collection(db, "stores", storeId, "orders"), where("status", "==", "pending"));
+    const snap = await getDocs(q);
+    for (const d of snap.docs) {
+      await deleteDoc(doc(db, "stores", storeId, "orders", d.id));
+    }
+    loadedOrderDocIds = [];
+    updateMobileOrderSaveButtonState();
+    alert(`未会計のモバイル注文（${snap.size}件）を削除しました。`);
+  };
+
   window.deleteAllProductsData = async () => {
     if (!confirm("登録されているすべての商品を削除しますか？")) return;
     storeData.products = [];
@@ -2949,6 +3023,9 @@
     const enabled = Boolean(storeData.staffTrackingEnabled);
     const chk = document.getElementById("staff-tracking-enabled");
     if (chk) chk.checked = enabled;
+
+    const printChk = document.getElementById("print-cashier-on-receipt");
+    if (printChk) printChk.checked = storeData.printCashierOnReceipt !== false;
     const controls = document.getElementById("staff-tracking-controls");
     if (controls) controls.classList.toggle("hidden", !enabled);
 
@@ -2983,6 +3060,11 @@
     await saveStoreData();
     renderStaffTabUI();
     await renderAdminSales();
+  };
+
+  window.togglePrintCashierOnReceipt = async () => {
+    storeData.printCashierOnReceipt = document.getElementById("print-cashier-on-receipt").checked;
+    await saveStoreData();
   };
 
   window.addStaffMember = async () => {
