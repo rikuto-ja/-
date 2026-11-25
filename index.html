@@ -978,7 +978,7 @@
       <div style="margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid #ccc; display: flex; flex-direction: column; gap: 10px;">
         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: bold;">
           <input type="checkbox" id="staff-tracking-enabled" style="width: auto; transform: scale(1.2);" onchange="toggleStaffTrackingEnabled()">
-          <span>レジ打ち担当者記録機能を有効にする（デフォルトOFF：OFF時は記録・表示しません）</span>
+          <span>レジ打ち担当者記録機能を有効にする</span>
         </label>
         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: bold;">
           <input type="checkbox" id="print-cashier-on-receipt" style="width: auto; transform: scale(1.2);" onchange="togglePrintCashierOnReceipt()">
@@ -1029,7 +1029,7 @@
     <div id="tab-reset" class="admin-section" style="text-align: center;">
       <h3>データ初期化</h3>
       <p style="font-size: 13px; color: var(--dark-gray); margin-bottom: 14px;">
-        実行する初期化操作を選択してください（元に戻せない操作があります）。
+        実行する初期化操作を選択してください。
       </p>
       <div style="display: flex; flex-direction: column; gap: 10px; max-width: 420px; margin: 0 auto;">
         <button type="button" class="danger" style="padding: 14px;" onclick="deletePendingMobileOrders()">未会計モバイル注文削除（予約のみ削除）</button>
@@ -3290,7 +3290,7 @@
       const actionButtonsHtml = s.refunded
         ? `
           <button type="button" style="padding:4px 6px; font-size:12px;" onclick="openSaleDetailModal(${originalIdx})">詳細</button>
-          <button type="button" style="padding:4px 6px; font-size:12px;" onclick="reprintRefundSlipFromHistory(${originalIdx})">払い戻し伝票印刷</button>
+          <button type="button" style="padding:4px 6px; font-size:12px;" onclick="reprintRefundSlipFromHistory(${originalIdx})">払い戻し伝票</button>
         `
         : `
           <button type="button" style="padding:4px 6px; font-size:12px;" onclick="openSaleDetailModal(${originalIdx})">詳細</button>
@@ -3304,7 +3304,7 @@
         <td>¥${Math.round(Number(s.grandTotal || 0)).toLocaleString()}</td>
         <td>${escapeHtml(s.paymentMethod)}</td>
         <td>${cashierDisplay}</td>
-        <td style="color:${s.refunded ? 'var(--red)' : 'inherit'}; font-weight:bold;">${s.refunded ? "払戻/取消" : "完了"}</td>
+        <td style="color:${s.refunded ? 'var(--red)' : 'inherit'}; font-weight:bold;">${s.refunded ? "払戻" : "完了"}</td>
         <td>${actionButtonsHtml}</td>
       `;
       tbody.appendChild(tr);
