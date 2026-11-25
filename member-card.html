@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>会員カード管理システム</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #000000;
+    --border: #000000;
+    --gray: #f2f2f2;
+    --dark-gray: #666666;
+    --red: #d32f2f;
+  }
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    touch-action: manipulation;
+  }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  button {
+    background: var(--bg);
+    color: var(--fg);
+    border: 2px solid var(--border);
+    padding: 10px 14px;
+    font-size: 15px;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  button:active { background: var(--fg); color: var(--bg); }
+  button.primary { background: var(--fg); color: var(--bg); }
+  button.danger { border-color: var(--red); color: var(--red); }
+  button.danger:active { background: var(--red); color: var(--bg); }
+  input, select {
+    border: 2px solid var(--border);
+    padding: 8px 10px;
+    font-size: 15px;
+    background: var(--bg);
+    color: var(--fg);
+    border-radius: 4px;
+    width: 100%;
+  }
+  .hidden { display: none !important; }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 2px solid var(--border);
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .header-title { font-size: 20px; font-weight: bold; }
+  .header-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  .container {
+    max-width: 960px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 16px;
+    flex: 1;
+  }
+  .box {
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    background: var(--bg);
+  }
+  .form-group { margin-bottom: 12px; }
+  .form-group label { display: block; font-weight: bold; margin-bottom: 4px; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th, td { border: 1px solid var(--border); padding: 8px; text-align: left; font-size: 14px; }
+  th { background: var(--gray); }
+  .member-code-link {
+    font-weight: bold;
+    text-decoration: underline;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 14px;
+  }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin: 12px 0;
+  }
+  .stat-card {
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    background: var(--gray);
+  }
+  .stat-label { font-size: 12px; color: var(--dark-gray); font-weight: bold; }
+  .stat-value { font-size: 22px; font-weight: bold; margin-top: 4px; }
+
+  /* 印刷用エリア */
+  #print-area { display: none; }
+  @media print {
+    body * { visibility: hidden; }
+    #print-area, #print-area * { visibility: visible; }
+    #print-area {
+      display: block !important;
+      position: absolute;
+      left: 0; top: 0;
+      width: 86mm;
+      padding: 6mm;
+      border: 2px solid #000;
+      color: #000;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div id="login-screen" class="container" style="display:flex; justify-content:center; align-items:center;">
+  <div class="box" style="max-width:400px; width:100%; padding:28px;">
+    <h1 style="margin-bottom:16px; text-align:center;">会員カード管理 ログイン</h1>
+    <div class="form-group">
+      <label>メールアドレス</label>
+      <input type="email" id="login-email" placeholder="admin@example.com">
+    </div>
+    <div class="form-group">
+      <label>パスワード</label>
+      <input type="password" id="login-password" placeholder="••••••••">
+    </div>
+    <button type="button" class="primary" style="width:100%; padding:12px;" onclick="handleLogin()">ログイン</button>
+    <p id="login-error" style="color:var(--red); margin-top:8px; font-size:13px;"></p>
+  </div>
+</div>
+
+<div id="app-screen" class="hidden" style="display:flex; flex-direction:column; flex:1;">
+  <header>
+    <span class="header-title" id="header-store-name">会員カード管理</span>
+    <div class="header-controls">
+      <button type="button" onclick="location.href='index.html'">レジへ</button>
+      <button type="button" class="danger" onclick="handleLogout()">ログアウト</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- 1. 会員検索画面 -->
+    <div id="search-view">
+      <div class="box">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+          <h2 style="flex:1;">会員検索</h2>
+          <button type="button" class="primary" onclick="showView('register-view')">+ 新規登録</button>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <input type="text" id="search-keyword" placeholder="名前 または 会員番号で検索" oninput="renderMembersTable()" style="flex:1; min-width:200px;">
+        </div>
+        <table>
+          <thead>
+            <tr><th>会員番号</th><th>名前</th><th>性別</th><th>生年月日</th><th>残高</th><th>ポイント</th><th>状態</th></tr>
+          </thead>
+          <tbody id="members-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 2. 新規登録画面 -->
+    <div id="register-view" class="hidden">
+      <div class="box" style="max-width:520px; margin:0 auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+          <h2>会員カード 新規登録</h2>
+          <button type="button" onclick="showView('search-view')">検索へ戻る</button>
+        </div>
+        <div class="form-group">
+          <label>名前</label>
+          <input type="text" id="reg-name" placeholder="例: 山田 太郎">
+        </div>
+        <div class="form-group">
+          <label>性別</label>
+          <select id="reg-gender">
+            <option value="未回答">未回答</option>
+            <option value="男性">男性</option>
+            <option value="女性">女性</option>
+            <option value="その他">その他</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>生年月日</label>
+          <input type="date" id="reg-birthdate">
+        </div>
+        <button type="button" class="primary" style="width:100%; padding:14px;" onclick="registerMember()">確定して会員番号を発行</button>
+      </div>
+    </div>
+
+    <!-- 3. 会員詳細・編集・操作画面 -->
+    <div id="detail-view" class="hidden">
+      <div class="box">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+          <h2>会員詳細: <span id="detail-member-code"></span></h2>
+          <button type="button" onclick="showView('search-view')">会員検索へ戻る</button>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="stat-label">残高</div>
+            <div class="stat-value" id="detail-balance">¥0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">ポイント残高</div>
+            <div class="stat-value" id="detail-points">0 pt</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">ステータス</div>
+            <div class="stat-value" id="detail-status">有効</div>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+          <button type="button" class="primary" onclick="printCurrentMemberCard()">会員カードを印刷</button>
+          <button type="button" id="btn-toggle-suspend" onclick="toggleSuspendCurrentMember()">一時停止</button>
+          <button type="button" class="danger" onclick="deleteCurrentMember()">会員削除</button>
+        </div>
+
+        <div id="detail-card-qr" style="display:flex; align-items:center; gap:16px; border:2px solid var(--border); padding:12px; border-radius:6px; margin-bottom:16px;">
+          <div id="detail-qr-canvas"></div>
+          <div>
+            <div style="font-weight:bold; font-size:16px;" id="detail-card-name"></div>
+            <div style="font-size:14px;" id="detail-card-code-text"></div>
+            <div style="font-size:12px; color:var(--dark-gray); margin-top:4px;">POS決済時にこのQRコードを読み取ります</div>
+          </div>
+        </div>
+
+        <h3 style="margin-bottom:8px;">会員情報の編集</h3>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:8px; margin-bottom:16px;">
+          <input type="text" id="edit-member-name" placeholder="名前">
+          <select id="edit-member-gender">
+            <option value="未回答">未回答</option>
+            <option value="男性">男性</option>
+            <option value="女性">女性</option>
+            <option value="その他">その他</option>
+          </select>
+          <input type="date" id="edit-member-birthdate">
+          <button type="button" class="primary" onclick="saveCurrentMemberEdit()">編集を保存</button>
+        </div>
+
+        <h3 style="margin-bottom:8px;">利用履歴（ポイント獲得・利用 / 残高チャージ・利用）</h3>
+        <table>
+          <thead>
+            <tr><th>日時</th><th>場所・取引</th><th>種別</th><th>残高変動</th><th>ポイント変動</th></tr>
+          </thead>
+          <tbody id="detail-logs-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="print-area"></div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBp3UnSVgaLWscOQy92PTIwSiAw84TkZS4",
+    authDomain: "rapireji-73631.firebaseapp.com",
+    projectId: "rapireji-73631",
+    storageBucket: "rapireji-73631.firebasestorage.app",
+    messagingSenderId: "19160349975",
+    appId: "1:19160349975:web:5896a23b8b4ee7b87e4b52",
+    measurementId: "G-G5913LZXK4"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  let storeId = null;
+  let storeName = "店舗";
+  let members = [];
+  let currentMember = null;
+
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      storeId = user.uid;
+      document.getElementById("login-screen").classList.add("hidden");
+      document.getElementById("app-screen").classList.remove("hidden");
+      const snap = await getDoc(doc(db, "stores", storeId));
+      if (snap.exists() && snap.data().name) {
+        storeName = snap.data().name;
+        document.getElementById("header-store-name").textContent = `${storeName} - 会員カード管理`;
+      }
+      await loadMembers();
+      showView("search-view");
+    } else {
+      document.getElementById("login-screen").classList.remove("hidden");
+      document.getElementById("app-screen").classList.add("hidden");
+    }
+  });
+
+  window.handleLogin = async () => {
+    const email = document.getElementById("login-email").value.trim();
+    const pass = document.getElementById("login-password").value;
+    try {
+      await signInWithEmailAndPassword(auth, email, pass);
+    } catch (e) {
+      document.getElementById("login-error").textContent = "ログインに失敗しました。";
+    }
+  };
+
+  window.handleLogout = async () => {
+    await signOut(auth);
+  };
+
+  window.showView = (viewId) => {
+    ["search-view", "register-view", "detail-view"].forEach(id => {
+      document.getElementById(id).classList.toggle("hidden", id !== viewId);
+    });
+  };
+
+  async function loadMembers() {
+    const q = query(collection(db, "stores", storeId, "members"), orderBy("createdAt", "desc"));
+    const snap = await getDocs(q);
+    members = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderMembersTable();
+  }
+
+  window.loadMembers = loadMembers;
+
+  window.renderMembersTable = () => {
+    const kw = (document.getElementById("search-keyword")?.value || "").trim().toLowerCase();
+    const tbody = document.getElementById("members-table-body");
+    tbody.innerHTML = "";
+
+    const filtered = members.filter(m =>
+      !kw ||
+      String(m.memberCode || "").toLowerCase().includes(kw) ||
+      String(m.name || "").toLowerCase().includes(kw)
+    );
+
+    filtered.forEach(m => {
+      const tr = document.createElement("tr");
+      const statusText = m.suspended ? "一時停止" : "有効";
+      tr.innerHTML = `
+        <td><button type="button" class="member-code-link" onclick="openMemberDetail('${m.id}')">${escapeHtml(m.memberCode)}</button></td>
+        <td>${escapeHtml(m.name)}</td>
+        <td>${escapeHtml(m.gender || "未回答")}</td>
+        <td>${escapeHtml(m.birthdate || "-")}</td>
+        <td>¥${Math.round(Number(m.balance || 0)).toLocaleString()}</td>
+        <td>${Math.round(Number(m.points || 0)).toLocaleString()} pt</td>
+        <td style="color:${m.suspended ? "var(--red)" : "inherit"}; font-weight:bold;">${statusText}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  };
+
+  window.registerMember = async () => {
+    const name = document.getElementById("reg-name").value.trim();
+    const gender = document.getElementById("reg-gender").value;
+    const birthdate = document.getElementById("reg-birthdate").value;
+    if (!name) return alert("名前を入力してください");
+
+    const memberCode = "M" + String(Math.floor(100000 + Math.random() * 900000));
+    const newDoc = {
+      memberCode,
+      name,
+      gender,
+      birthdate,
+      balance: 0,
+      points: 0,
+      suspended: false,
+      createdAt: new Date().toISOString()
+    };
+
+    const ref = await addDoc(collection(db, "stores", storeId, "members"), newDoc);
+    document.getElementById("reg-name").value = "";
+    document.getElementById("reg-birthdate").value = "";
+
+    await loadMembers();
+    const created = { id: ref.id, ...newDoc };
+    printMemberCard(created);
+    await openMemberDetail(ref.id);
+  };
+
+  window.openMemberDetail = async (memberId) => {
+    const found = members.find(m => m.id === memberId);
+    if (!found) return;
+    currentMember = found;
+
+    document.getElementById("detail-member-code").textContent = found.memberCode;
+    document.getElementById("detail-balance").textContent = `¥${Math.round(Number(found.balance || 0)).toLocaleString()}`;
+    document.getElementById("detail-points").textContent = `${Math.round(Number(found.points || 0)).toLocaleString()} pt`;
+    document.getElementById("detail-status").textContent = found.suspended ? "一時停止中" : "有効";
+
+    const suspBtn = document.getElementById("btn-toggle-suspend");
+    suspBtn.textContent = found.suspended ? "一時停止を解除" : "一時停止";
+
+    document.getElementById("detail-card-name").textContent = `${found.name} 様`;
+    document.getElementById("detail-card-code-text").textContent = `会員番号: ${found.memberCode}`;
+    const qrBox = document.getElementById("detail-qr-canvas");
+    qrBox.innerHTML = "";
+    new QRCode(qrBox, { text: found.memberCode, width: 110, height: 110 });
+
+    document.getElementById("edit-member-name").value = found.name || "";
+    document.getElementById("edit-member-gender").value = found.gender || "未回答";
+    document.getElementById("edit-member-birthdate").value = found.birthdate || "";
+
+    const logsSnap = await getDocs(query(collection(db, "stores", storeId, "members", memberId, "logs"), orderBy("createdAt", "desc")));
+    const logsBody = document.getElementById("detail-logs-body");
+    logsBody.innerHTML = "";
+    logsSnap.forEach(d => {
+      const l = d.data();
+      const balDiff = Math.round(Number(l.balanceDelta || 0));
+      const ptDiff = Math.round(Number(l.pointsDelta || 0));
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${new Date(l.createdAt).toLocaleString("ja-JP")}</td>
+        <td>${escapeHtml(l.location || storeName)}（${escapeHtml(l.detail || "")}）</td>
+        <td>${escapeHtml(l.type || "")}</td>
+        <td>${balDiff === 0 ? "-" : (balDiff > 0 ? `+¥${balDiff.toLocaleString()}` : `-¥${Math.abs(balDiff).toLocaleString()}`)}</td>
+        <td>${ptDiff === 0 ? "-" : (ptDiff > 0 ? `+${ptDiff.toLocaleString()} pt` : `-${Math.abs(ptDiff).toLocaleString()} pt`)}</td>
+      `;
+      logsBody.appendChild(tr);
+    });
+
+    showView("detail-view");
+  };
+
+  window.saveCurrentMemberEdit = async () => {
+    if (!currentMember) return;
+    const name = document.getElementById("edit-member-name").value.trim();
+    const gender = document.getElementById("edit-member-gender").value;
+    const birthdate = document.getElementById("edit-member-birthdate").value;
+    if (!name) return alert("名前を入力してください");
+
+    await updateDoc(doc(db, "stores", storeId, "members", currentMember.id), { name, gender, birthdate });
+    await loadMembers();
+    await openMemberDetail(currentMember.id);
+    alert("会員情報を保存しました。");
+  };
+
+  window.toggleSuspendCurrentMember = async () => {
+    if (!currentMember) return;
+    const nextSuspended = !Boolean(currentMember.suspended);
+    await updateDoc(doc(db, "stores", storeId, "members", currentMember.id), { suspended: nextSuspended });
+    await loadMembers();
+    await openMemberDetail(currentMember.id);
+  };
+
+  window.deleteCurrentMember = async () => {
+    if (!currentMember) return;
+    if (!confirm(`会員「${currentMember.name}（${currentMember.memberCode}）」を削除しますか？`)) return;
+    await deleteDoc(doc(db, "stores", storeId, "members", currentMember.id));
+    currentMember = null;
+    await loadMembers();
+    showView("search-view");
+  };
+
+  window.printCurrentMemberCard = () => {
+    if (!currentMember) return;
+    printMemberCard(currentMember);
+  };
+
+  function printMemberCard(member) {
+    const area = document.getElementById("print-area");
+    area.innerHTML = `
+      <div style="text-align:center; font-weight:bold; font-size:18px; margin-bottom:6px;">会 員 カ ー ド</div>
+      <div style="text-align:center; font-size:14px; margin-bottom:10px;">${escapeHtml(storeName)}</div>
+      <div id="print-card-qr" style="display:flex; justify-content:center; margin:10px 0;"></div>
+      <div style="text-align:center; font-size:20px; font-weight:bold; margin-top:8px;">${escapeHtml(member.memberCode)}</div>
+      <div style="text-align:center; font-size:16px; margin-top:4px;">${escapeHtml(member.name)} 様</div>
+    `;
+    new QRCode(document.getElementById("print-card-qr"), {
+      text: member.memberCode,
+      width: 140,
+      height: 140
+    });
+    window.print();
+  }
+
+  function escapeHtml(str) {
+    if (!str) return "";
+    return String(str).replace(/[&<>"']/g, m => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    })[m]);
+  }
+</script>
+</body>
+</html>
