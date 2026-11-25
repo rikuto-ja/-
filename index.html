@@ -465,6 +465,26 @@
 
   /* スマホ等（幅768px以下）のモバイル注文画面：上に商品、下に予約リスト */
   @media (max-width: 768px) {
+  #pos-screen #main-pos {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    min-height: calc(100dvh - 56px);
+    overflow-y: auto;
+  }
+  #pos-screen #main-pos .product-area {
+    width: 100%;
+    flex: none;
+    max-height: 52dvh;
+    overflow-y: auto;
+    border-right: none;
+    border-bottom: 2px solid var(--border);
+  }
+  #pos-screen #main-pos .cart-area {
+    width: 100%;
+    flex: 1;
+    min-height: 44dvh;
+  }
     #customer-order-screen #main-pos {
       flex-direction: column;
       overflow-y: auto;
@@ -876,7 +896,7 @@
       <button type="button" onclick="switchAdminTab('tab-staff', this)">担当者</button>
       <button type="button" onclick="switchAdminTab('tab-ops-settings', this)">設定</button>
       <button type="button" onclick="location.href='member-card.html'">会員カード</button>
-      <button type="button" onclick="switchAdminTab('tab-reset', this)">初期化</button>
+      <button type="button" onclick="switchAdminTab('tab-reset', this)">データ</button>
     </div>
 
     <!-- タブ1：商品・在庫管理 -->
@@ -1049,9 +1069,12 @@
     <!-- タブ8：設定（効果音・セルフレジ・払戻・テストモード） -->
     <div id="tab-ops-settings" class="admin-section">
       <h3>レジ動作設定</h3>
-      <p style="font-size: 13px; color: var(--dark-gray); margin-bottom: 14px;">
-        効果音・セルフレジ・払い戻し・テストモードを切り替えます。
+      <p style="font-size: 13px; color: var(--dark-gray); margin-bottom: 6px;">
+        効果音・セルフレジ・払い戻し・テストモードを端末ごとの設定です。
       </p>
+      <div id="current-device-id-text" style="font-size: 12px; color: var(--dark-gray); margin-bottom: 14px;">
+        端末ID: 自動発行中
+      </div>
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 20px;">
         <button type="button" id="sound-click-toggle-btn" onclick="toggleIndividualSound('buttonClick')">ボタン操作音: ON</button>
         <button type="button" id="sound-checkout-toggle-btn" onclick="toggleIndividualSound('checkoutDone')">会計完了音: ON</button>
@@ -1071,8 +1094,35 @@
     </div>
 
     <!-- タブ9：初期化（商品削除・販売履歴削除・初期化） -->
-    <div id="tab-reset" class="admin-section" style="text-align: center;">
-      <h3>データ初期化</h3>
+    <div id="tab-reset" class="admin-section">
+      <h3>データ管理（バックアップ・復元 / 初期化）</h3>
+      <div style="border:1px solid var(--border); border-radius:6px; padding:12px; margin-bottom:14px; background:var(--gray);">
+        <div style="font-weight:bold; margin-bottom:8px;">バックアップダウンロード</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <select id="backup-type-select" style="width:auto; min-width:180px;">
+            <option value="all">全部（商品・カテゴリ・販売履歴・会員・店舗設定）</option>
+            <option value="products_only">商品のみ（商品・カテゴリ）</option>
+            <option value="sales_and_products">販売履歴と商品（販売履歴・商品・カテゴリ）</option>
+            <option value="members_only">会員データのみ</option>
+            <option value="store_settings_only">店舗・設定のみ</option>
+          </select>
+          <button type="button" class="primary" onclick="downloadBackupFile()">バックアップをダウンロード</button>
+        </div>
+      </div>
+
+      <div style="border:1px solid var(--border); border-radius:6px; padding:12px; margin-bottom:18px; background:var(--gray);">
+        <div style="font-weight:bold; margin-bottom:8px;">バックアップ読み込み（既存データに追加保存）</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <input type="file" id="backup-file-input" accept=".json,application/json" style="width:auto; max-width:100%;">
+          <button type="button" onclick="importBackupFile()">読み込んで追加保存</button>
+        </div>
+        <div style="font-size:12px; color:var(--dark-gray); margin-top:6px;">
+          ※ 既存データは削除せず、読み込んだデータを追加（重複IDは自動調整）して保存します。
+        </div>
+      </div>
+
+      <hr style="margin:14px 0;">
+      <h4>データ初期化</h4>
       <p style="font-size: 13px; color: var(--dark-gray); margin-bottom: 14px;">
         実行する初期化操作を選択してください。
       </p>
@@ -1254,6 +1304,7 @@
     const s = ensureSoundSettings();
     s[key] = !s[key];
     syncSoundButtons();
+    saveDeviceOpsSettings();
     await saveStoreData();
     if (key === "buttonClick") {
       playClickSound();
@@ -1305,6 +1356,82 @@
       storeData.mobileOrderQrToken = data.mobileOrderQrToken || "";
       applyMobileQrLockState(storeData.mobileOrderQrToken);
     });
+  }
+
+  const DEVICE_STORAGE_KEY = "rapiregi_device_id";
+  function getOrCreateDeviceId() {
+    let id = localStorage.getItem(DEVICE_STORAGE_KEY);
+    if (!id) {
+      id = `dev_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      localStorage.setItem(DEVICE_STORAGE_KEY, id);
+    }
+    return id;
+  }
+  const deviceId = getOrCreateDeviceId();
+
+  function getDeviceOpsDocRef(targetStoreId = storeId) {
+    return doc(db, "stores", targetStoreId, "devices", deviceId);
+  }
+
+  function getCurrentOpsSettings() {
+    return {
+      deviceId,
+      sound: {
+        buttonClick: Boolean(storeData.soundSettings?.buttonClick ?? true),
+        checkoutDone: Boolean(storeData.soundSettings?.checkoutDone ?? true),
+        staffCall: Boolean(storeData.soundSettings?.staffCall ?? true)
+      },
+      isSelfCheckout: Boolean(isSelfCheckout),
+      isRefundMode: Boolean(isRefundMode),
+      isTestMode: Boolean(isTestMode),
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  function saveDeviceOpsSettings() {
+    if (!storeId) return;
+    setDoc(getDeviceOpsDocRef(storeId), getCurrentOpsSettings(), { merge: true }).catch((err) => {
+      console.error("[saveDeviceOpsSettings] error:", err);
+    });
+  }
+
+  async function loadAndApplyDeviceOpsSettings() {
+    if (!storeId) return;
+    try {
+      const snap = await getDoc(getDeviceOpsDocRef(storeId));
+      if (!snap.exists()) {
+        await setDoc(getDeviceOpsDocRef(storeId), getCurrentOpsSettings(), { merge: true });
+        return;
+      }
+      const data = snap.data() || {};
+      if (data.sound) {
+        storeData.soundSettings = {
+          ...(storeData.soundSettings || {}),
+          buttonClick: data.sound.buttonClick ?? true,
+          checkoutDone: data.sound.checkoutDone ?? true,
+          staffCall: data.sound.staffCall ?? true
+        };
+      }
+      if (typeof data.isRefundMode === "boolean") {
+        isRefundMode = data.isRefundMode;
+      }
+      if (typeof data.isTestMode === "boolean") {
+        isTestMode = data.isTestMode;
+      }
+      if (typeof data.isSelfCheckout === "boolean") {
+        isSelfCheckout = data.isSelfCheckout;
+        storeData.isSelfCheckout = isSelfCheckout;
+        const staffCtrl = document.getElementById("staff-header-controls");
+        const selfCtrl = document.getElementById("self-header-controls");
+        if (staffCtrl && selfCtrl) {
+          staffCtrl.classList.toggle("hidden", isSelfCheckout);
+          selfCtrl.classList.toggle("hidden", !isSelfCheckout);
+        }
+      }
+      syncPosActionStatesForMode();
+    } catch (err) {
+      console.error("[loadAndApplyDeviceOpsSettings] error:", err);
+    }
   }
 
   let currentUser = null;
@@ -1469,6 +1596,7 @@
     if (tokenEl) {
       tokenEl.textContent = `現在のQRトークン: ${storeData.mobileOrderQrToken}`;
     }
+    await loadAndApplyDeviceOpsSettings();
     isSelfCheckout = Boolean(storeData.isSelfCheckout && String(storeData.staffPass || "").trim());
     if (isSelfCheckout) {
       document.getElementById("staff-header-controls").classList.add("hidden");
@@ -1532,6 +1660,8 @@
     }
 
     syncSoundButtons();
+    const devIdEl = document.getElementById("current-device-id-text");
+    if (devIdEl) devIdEl.textContent = `端末ID: ${deviceId}`;
     const adminTestBtn = document.getElementById("admin-test-mode-btn");
     if (adminTestBtn) {
       adminTestBtn.textContent = `テストモード: ${isTestMode ? "ON" : "OFF"}`;
@@ -1541,6 +1671,11 @@
     if (adminRefundBtn) {
       adminRefundBtn.textContent = `払い戻し: ${isRefundMode ? "ON" : "OFF"}`;
       adminRefundBtn.classList.toggle("solid", isRefundMode);
+    }
+    const barcodeBtn = document.getElementById("toggle-left-camera-btn");
+    if (barcodeBtn) {
+      barcodeBtn.classList.remove("hidden");
+      barcodeBtn.disabled = false;
     }
   }
 
@@ -1927,6 +2062,7 @@
     const badge = document.getElementById("test-mode-badge");
     if (badge) badge.classList.toggle("hidden", !isTestMode);
     syncPosActionStatesForMode();
+    saveDeviceOpsSettings();
   };
 
   window.toggleRefundMode = () => {
@@ -1947,6 +2083,7 @@
     actionBtn.classList.toggle("primary", !isRefundMode);
 
     syncPosActionStatesForMode();
+    saveDeviceOpsSettings();
     renderProducts();
     renderCart();
   };
@@ -2084,10 +2221,17 @@
     storeData.isSelfCheckout = true;
     document.getElementById("staff-header-controls").classList.add("hidden");
     document.getElementById("self-header-controls").classList.remove("hidden");
-    document.getElementById("toggle-left-camera-btn")?.classList.remove("hidden");
+    const selfControls = document.getElementById("self-header-controls");
+    const barcodeBtn = document.getElementById("toggle-left-camera-btn");
+    if (selfControls && barcodeBtn && barcodeBtn.parentElement !== selfControls) {
+      selfControls.prepend(barcodeBtn);
+    }
+    barcodeBtn?.classList.remove("hidden");
+    if (barcodeBtn) barcodeBtn.disabled = false;
     syncPosActionStatesForMode();
     renderCart();
     await saveStoreData();
+    saveDeviceOpsSettings();
   };
 
   window.enableSelfCheckoutFromAdmin = () => {
@@ -2342,7 +2486,7 @@
           ...(storeData.pointCardEnabled ? ["ポイント利用"] : [])
         ]
       : [];
-    const methods = ["現金", ...storeData.paymentMethods, ...memberPayMethods];
+    const methods = ["現金", ...memberPayMethods, ...storeData.paymentMethods];
 
     methods.forEach(m => {
       const isDisabled = isSelfCheckout && !isPaymentAllowedInSelfCheckout(m);
@@ -3626,6 +3770,167 @@
     alert("すべての販売履歴を削除しました。");
   };
 
+  function sanitizeStoreDataForBackup(raw) {
+    const src = raw && typeof raw === "object" ? { ...raw } : {};
+    return src;
+  }
+
+  async function fetchMembersForBackup() {
+    if (!storeId) return [];
+    try {
+      const snap = await getDocs(collection(db, "stores", storeId, "members"));
+      return snap.docs.map(d => ({ id: d.id, ...(d.data() || {}) }));
+    } catch (err) {
+      console.error("[fetchMembersForBackup] error:", err);
+      return [];
+    }
+  }
+
+  window.downloadBackupFile = async () => {
+    const type = document.getElementById("backup-type-select")?.value || "all";
+    const payload = {
+      app: "rapiregi",
+      version: 1,
+      backupType: type,
+      exportedAt: new Date().toISOString(),
+      storeId: storeId || ""
+    };
+
+    if (type === "all" || type === "products_only" || type === "sales_and_products") {
+      payload.products = Array.isArray(storeData.products) ? storeData.products : [];
+      payload.categories = Array.isArray(storeData.categories) ? storeData.categories : [];
+    }
+    if (type === "all" || type === "sales_and_products") {
+      payload.sales = Array.isArray(storeData.sales) ? storeData.sales : [];
+    }
+    if (type === "all" || type === "members_only") {
+      payload.members = await fetchMembersForBackup();
+    }
+    if (type === "all" || type === "store_settings_only") {
+      payload.storeSettings = sanitizeStoreDataForBackup(storeData);
+    }
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    a.href = url;
+    a.download = `rapiregi-backup-${type}-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  window.importBackupFile = async () => {
+    const fileInput = document.getElementById("backup-file-input");
+    const file = fileInput?.files?.[0];
+    if (!file) return alert("バックアップファイル（.json）を選択してください。");
+
+    let data;
+    try {
+      const text = await file.text();
+      data = JSON.parse(text);
+    } catch (err) {
+      return alert("JSONファイルの読み込みに失敗しました。");
+    }
+
+    if (!data || typeof data !== "object") {
+      return alert("不正なバックアップ形式です。");
+    }
+
+    if (!confirm("選択したバックアップを現在のデータに追加保存しますか？（既存データは消去されません）")) return;
+
+    if (Array.isArray(data.categories)) {
+      storeData.categories = Array.isArray(storeData.categories) ? storeData.categories : [];
+      const existingCats = new Set(storeData.categories.map(c => typeof c === "string" ? c : c?.name).filter(Boolean));
+      for (const c of data.categories) {
+        const name = typeof c === "string" ? c : c?.name;
+        if (name && !existingCats.has(name)) {
+          storeData.categories.push(c);
+          existingCats.add(name);
+        }
+      }
+    }
+
+    if (Array.isArray(data.products)) {
+      storeData.products = Array.isArray(storeData.products) ? storeData.products : [];
+      const usedIds = new Set(storeData.products.map(p => String(p?.id ?? "")).filter(Boolean));
+      for (const p of data.products) {
+        if (!p || typeof p !== "object") continue;
+        const copy = { ...p };
+        let nextId = String(copy.id ?? "");
+        if (!nextId || usedIds.has(nextId)) {
+          nextId = `prod_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+          while (usedIds.has(nextId)) {
+            nextId = `prod_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+          }
+        }
+        copy.id = nextId;
+        usedIds.add(nextId);
+        storeData.products.push(copy);
+      }
+    }
+
+    if (Array.isArray(data.sales)) {
+      storeData.sales = Array.isArray(storeData.sales) ? storeData.sales : [];
+      const usedSaleIds = new Set(storeData.sales.map(s => String(s?.id ?? s?.saleId ?? "")).filter(Boolean));
+      for (const s of data.sales) {
+        if (!s || typeof s !== "object") continue;
+        const copy = { ...s };
+        let nextId = String(copy.id ?? copy.saleId ?? "");
+        if (!nextId || usedSaleIds.has(nextId)) {
+          nextId = `sale_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+          while (usedSaleIds.has(nextId)) {
+            nextId = `sale_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+          }
+        }
+        copy.id = nextId;
+        usedSaleIds.add(nextId);
+        storeData.sales.push(copy);
+      }
+    }
+
+    if (Array.isArray(data.members) && storeId) {
+      const existingSnap = await getDocs(collection(db, "stores", storeId, "members"));
+      const usedMemberIds = new Set(existingSnap.docs.map(d => d.id));
+      for (const m of data.members) {
+        if (!m || typeof m !== "object") continue;
+        const copy = { ...m };
+        let docId = String(copy.id || copy.memberCode || "");
+        if (!docId || usedMemberIds.has(docId)) {
+          docId = `mem_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+          while (usedMemberIds.has(docId)) {
+            docId = `mem_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+          }
+        }
+        delete copy.id;
+        copy.importedAt = new Date().toISOString();
+        usedMemberIds.add(docId);
+        await setDoc(doc(db, "stores", storeId, "members", docId), copy);
+      }
+    }
+
+    if (data.storeSettings && typeof data.storeSettings === "object") {
+      const keepKeys = ["products", "categories", "sales"];
+      const merged = { ...storeData };
+      for (const [k, v] of Object.entries(data.storeSettings)) {
+        if (!keepKeys.includes(k) && v !== undefined) {
+          merged[k] = v;
+        }
+      }
+      storeData = merged;
+    }
+
+    await saveStoreData();
+    if (typeof renderProducts === "function") renderProducts();
+    if (typeof renderCategoryTabs === "function") renderCategoryTabs();
+    if (typeof renderAdminProducts === "function") renderAdminProducts();
+    if (typeof renderAdminSales === "function") renderAdminSales();
+    fileInput.value = "";
+    alert("バックアップを追加保存しました。");
+  };
+
   window.resetAllStoreData = async () => {
     if (!confirm("店舗設定・商品・販売履歴をすべて初期化しますか？この操作は元に戻せません。")) return;
     await deleteAllSalesDocuments();
@@ -3826,15 +4131,16 @@
   function renderAdminPayments() {
     const ul = document.getElementById("admin-payment-list");
     ul.innerHTML = "";
-    const cardMethods = [
+    const standardCardMethods = [
       ...(storeData.balanceCardEnabled ? ["カード残高利用"] : []),
       ...(storeData.pointCardEnabled ? ["ポイント利用"] : [])
     ];
-    const allMethods = ["現金", ...storeData.paymentMethods, ...cardMethods];
+    const standardMethods = ["現金", ...standardCardMethods];
+    const allMethods = [...standardMethods, ...storeData.paymentMethods];
 
     allMethods.forEach((m, idx) => {
-      const isCash = idx === 0;
-      const customIdx = idx - 1;
+      const isCash = idx < standardMethods.length;
+      const customIdx = idx - standardMethods.length;
       const allowed = isPaymentAllowedInSelfCheckout(m);
       const li = document.createElement("li");
       li.style.cssText = "padding: 8px 0; border-bottom: 1px solid #ccc; display:flex; justify-content:space-between; align-items:center; gap: 10px; flex-wrap: wrap;";
@@ -4229,7 +4535,7 @@
     storeData.pointRatePercent = Number.isFinite(rateVal) && rateVal >= 0 ? rateVal : 1;
     storeData.pointCardEnabled = Boolean(document.getElementById("set-point-card-enabled")?.checked);
     storeData.balanceCardEnabled = Boolean(document.getElementById("set-balance-card-enabled")?.checked);
-    syncMemberCardUiVisibility();
+    renderMemberCheckoutStatus();
     storeData.staffPass = document.getElementById("set-staff-pass").value.trim();
     await saveStoreData();
     alert("店舗設定を保存しました。");
